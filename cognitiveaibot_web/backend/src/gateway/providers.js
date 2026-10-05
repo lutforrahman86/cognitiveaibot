@@ -1,9 +1,8 @@
 /**
- * Providers the gateway can call.
- *
- * A model can have two routes: direct to its maker (keyed by the `provider`
- * column, using provider_model_id) and through the aggregator (OpenRouter,
- * using aggregator_model_id). The gateway prefers direct when that key is set.
+ * Providers the gateway can call. Every model is called directly at its maker
+ * (keyed by the `provider` column, using provider_model_id), with that
+ * provider's own key. Aggregators and resellers are never used (ROADMAP
+ * Decision 1): a provider is added here only as a direct integration.
  *
  * `adapter` picks the wire format: 'openai' for OpenAI-compatible Chat
  * Completions APIs (openaiCompatible.js), 'anthropic' for Anthropic's
@@ -20,6 +19,8 @@ const PROVIDERS = {
     // Newer OpenAI models reject `max_tokens`.
     maxTokensParam: 'max_completion_tokens',
     streamUsage: true,
+    // Images, speech, transcription, embeddings and video (openaiMedia.js).
+    media: true,
   },
   Anthropic: {
     adapter: 'anthropic',
@@ -35,18 +36,7 @@ const PROVIDERS = {
     maxTokensParam: 'max_tokens',
     streamUsage: false,
   },
-  // The aggregator: one key reaches every model in the catalog.
-  OpenRouter: {
-    adapter: 'openai',
-    defaultBaseUrl: 'https://openrouter.ai/api/v1',
-    baseUrlEnv: 'OPENROUTER_BASE_URL',
-    apiKeyEnv: ['OPENROUTER_API_KEY'],
-    maxTokensParam: 'max_tokens',
-    streamUsage: true,
-  },
 };
-
-const AGGREGATOR = 'OpenRouter';
 
 function getProvider(name) {
   const spec = PROVIDERS[name];
@@ -59,7 +49,8 @@ function getProvider(name) {
     apiKey,
     maxTokensParam: spec.maxTokensParam,
     streamUsage: spec.streamUsage,
+    media: Boolean(spec.media),
   };
 }
 
-module.exports = { getProvider, AGGREGATOR, PROVIDER_NAMES: Object.keys(PROVIDERS) };
+module.exports = { getProvider, PROVIDER_NAMES: Object.keys(PROVIDERS) };

@@ -8,15 +8,29 @@ const { GatewayError, fromUpstreamStatus } = require('./errors');
  * `events` yields `{ type: 'delta', text }`, and `usage` holds the token
  * counts seen so far — kept even if the stream is stopped part-way.
  *
+ * System messages are sent as Anthropic's separate `system` field, and
+ * temperature / top_p / stop are mapped to its parameter names. `stopReason`
+ * is 'stop' or 'length' once the reply ends.
+ *
  * Thinking is left at each model's default (adaptive on current models).
  * Thinking tokens are billed as output tokens and are included in
  * usage.output_tokens; only the visible text is streamed to the user.
  */
-async function openChatStream({ provider, model, messages, maxTokens, signal }) {
+async function openChatStream({ provider, model, messages, maxTokens, signal, options = {} }) {
   const client = new Anthropic({ apiKey: provider.apiKey, baseURL: provider.baseUrl });
-  const usage = { inputTokens: undefined, outputTokens: undefined };
+  const usage = { inputTokens: undefined, outputTokens: undefined, stopReason: undefined };
 
-  const stream = client.messages.stream({ model, max_tokens: maxTokens, messages }, { signal });
+  const system = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
+  const params = {
+    model,
+    max_tokens: maxTokens,
+    messages: messages.filter((m) => m.role !== 'system'),
+    ...(system ? { system } : {}),
+    ...(options.temperature != null ? { temperature: options.temperature } : {}),
+    ...(options.top_p != null ? { top_p: options.top_p } : {}),
+    ...(options.stop != null ? { stop_sequences: [].concat(options.stop) } : {}),
+  };
+  const stream = client.messages.stream(params, { signal });
   const iterator = stream[Symbol.asyncIterator]();
 
   let first;
@@ -40,6 +54,7 @@ async function openChatStream({ provider, model, messages, maxTokens, signal }) 
           yield { type: 'delta', text: event.delta.text };
         } else if (event.type === 'message_delta') {
           if (event.usage?.output_tokens != null) usage.outputTokens = event.usage.output_tokens;
+          if (event.delta?.stop_reason) usage.stopReason = event.delta.stop_reason === 'max_tokens' ? 'length' : 'stop';
           if (event.delta?.stop_reason === 'refusal') {
             throw new GatewayError('PROVIDER_REFUSED', 'The model declined to answer this request.');
           }
@@ -55,6 +70,9 @@ async function openChatStream({ provider, model, messages, maxTokens, signal }) 
     events: events(),
     get usage() {
       return usage;
+    },
+    get stopReason() {
+      return usage.stopReason;
     },
   };
 }

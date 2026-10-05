@@ -2,6 +2,8 @@ const Chat = require('../models/Chat');
 const Message = require('../models/Message');
 const AIModel = require('../models/AIModel');
 const gateway = require('../gateway');
+const { modelTierFor, requireTier } = require('../billing/service');
+const { UserSettings } = require('../models/UserSettings');
 
 const MAX_MESSAGE_CHARS = 32000;
 // Earlier turns sent as context, newest first until either limit is hit.
@@ -54,14 +56,19 @@ function sendError(res, err) {
  * Anything that fails before the provider accepts the request — including
  * not having enough credits (402) — is a plain JSON error, nothing is saved
  * and nothing is charged.
+ *
+ * With `{ regenerate: true, model_id }` (no content), the chat's last user
+ * message is answered again: once the provider accepts, the replies after
+ * it are replaced by the new one, and no user message is added.
  */
 async function create(req, res) {
   const userId = req.user.id;
   const { chatId } = req.params;
-  const text = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
+  const regenerate = req.body?.regenerate === true;
+  let text = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
   const modelId = req.body?.model_id;
 
-  if (!text) return res.status(400).json({ error: 'Message is empty.', code: 'EMPTY_MESSAGE' });
+  if (!text && !regenerate) return res.status(400).json({ error: 'Message is empty.', code: 'EMPTY_MESSAGE' });
   if (text.length > MAX_MESSAGE_CHARS) {
     return res
       .status(400)
@@ -78,10 +85,14 @@ async function create(req, res) {
   }
   if (!chat) return res.status(404).json({ error: 'Chat not found', code: 'CHAT_NOT_FOUND' });
   if (!model) return res.status(400).json({ error: 'Unknown model.', code: 'MODEL_NOT_FOUND' });
+  if ((model.api_kind || 'chat') !== 'chat') {
+    return res.status(400).json({ error: `${model.name} isn’t a chat model.`, code: 'WRONG_MODEL_TYPE' });
+  }
 
   let prepared;
   try {
     prepared = gateway.prepare(model);
+    requireTier(model, await modelTierFor(userId));
   } catch (err) {
     return sendError(res, err);
   }
@@ -100,8 +111,28 @@ async function create(req, res) {
   });
 
   try {
-    const history = await Message.findByChatId(chatId, userId);
-    const context = buildContext(history, text);
+    const [fullHistory, settings] = await Promise.all([
+      Message.findByChatId(chatId, userId),
+      UserSettings.findByUserId(userId),
+    ]);
+    let history = fullHistory;
+    let regenerated = null; // { question, replaced }
+    if (regenerate) {
+      const last = fullHistory.map((m) => m.role).lastIndexOf('user');
+      if (last === -1) {
+        return res.status(400).json({ error: 'There’s no message to answer again.', code: 'NOTHING_TO_REGENERATE' });
+      }
+      regenerated = { question: fullHistory[last], replaced: fullHistory.slice(last + 1) };
+      text = regenerated.question.content;
+      history = fullHistory.slice(0, last);
+    }
+    // The user's custom instructions (Settings) lead every conversation;
+    // their temperature is sent only if they chose one.
+    const context = [
+      ...(settings.system_prompt ? [{ role: 'system', content: settings.system_prompt }] : []),
+      ...buildContext(history, text),
+    ];
+    const options = settings.temperature != null ? { temperature: Number(settings.temperature) } : {};
 
     let meter;
     try {
@@ -118,6 +149,9 @@ async function create(req, res) {
       return sendError(res, err);
     }
 
+    // Time to first token counts from the provider call, so it includes the
+    // provider's wait before it starts answering.
+    const providerCalledAt = Date.now();
     let stream;
     try {
       stream = await gateway.openStream({
@@ -125,6 +159,7 @@ async function create(req, res) {
         messages: context,
         maxTokens: meter.maxOutputTokens,
         signal: abort.signal,
+        options,
       });
     } catch (err) {
       await meter.finish({
@@ -135,8 +170,16 @@ async function create(req, res) {
       return sendError(res, err);
     }
 
-    const userMessage = await Message.create(chatId, { role: 'user', content: text }, userId);
-    const isFirstMessage = history.length === 0 && (!chat.title || chat.title === 'New chat');
+    let userMessage;
+    if (regenerated) {
+      userMessage = regenerated.question;
+      if (regenerated.replaced.length) {
+        await Message.destroy({ where: { id: regenerated.replaced.map((m) => m.id), chat_id: chatId } });
+      }
+    } else {
+      userMessage = await Message.create(chatId, { role: 'user', content: text }, userId);
+    }
+    const isFirstMessage = !regenerated && history.length === 0 && (!chat.title || chat.title === 'New chat');
     const updatedChat = await Chat.update(chatId, userId, {
       model_id: model.id,
       ...(isFirstMessage ? { title: titleFrom(text) } : {}),
@@ -153,14 +196,13 @@ async function create(req, res) {
     };
     send({ type: 'start', user_message: userMessage, chat: { id: chatId, title: updatedChat?.title } });
 
-    const startedAt = Date.now();
     let firstTokenMs = null;
     let reply = '';
     let streamError = null;
     try {
       for await (const event of stream.events) {
         if (event.type === 'delta') {
-          if (firstTokenMs === null) firstTokenMs = Date.now() - startedAt;
+          if (firstTokenMs === null) firstTokenMs = Date.now() - providerCalledAt;
           reply += event.text;
           send(event);
         }

@@ -6,6 +6,7 @@ const { startMockStripe } = require('./mockStripe');
 const WEBHOOK_SECRET = 'whsec_test_secret';
 
 let sequelize;
+let metering;
 let server;
 let stripeMock;
 let Stripe;
@@ -41,12 +42,13 @@ const subscription = (id, { user, plan, status = 'active', periodEnd = now() + 3
   metadata: { user_id: user.user.id, plan_id: plan.id, credits: String(credits ?? plan.credits) },
   items: { data: [{ current_period_end: periodEnd }] },
 });
-const invoice = (id, { subId, reason, metadata = {}, customer = null }) => ({
+const invoice = (id, { subId, reason, metadata = {}, customer = null, periodEnd = now() + 30 * 86400 }) => ({
   id,
   object: 'invoice',
   customer,
   billing_reason: reason,
   parent: { type: 'subscription_details', subscription_details: { subscription: subId, metadata } },
+  lines: { data: [{ period: { start: periodEnd - 30 * 86400, end: periodEnd } }] },
 });
 const billing = async (u) => (await api(server.baseUrl, 'GET', '/api/billing', { token: u.token })).body;
 const purchases = async (userId) =>
@@ -61,6 +63,7 @@ before(async () => {
   sequelize = await resetDatabase();
   stripeMock = await startMockStripe();
   Stripe = require('stripe');
+  metering = require('../src/gateway/metering');
   server = await startApp();
   admin = await registerUser(server.baseUrl, 'Admin');
   await sequelize.query("UPDATE users SET type = 'admin' WHERE id = :id", { replacements: { id: admin.user.id } });
@@ -203,17 +206,21 @@ test('an unsigned or wrongly signed webhook is rejected and changes nothing', as
   assert.equal((await purchases(eve.user.id)).length, 0);
 });
 
-test('a subscription grants its credits each paid period and keeps the terms it was bought on', async () => {
+test('a subscription grants its credits each paid period, replaces unused ones, and keeps its terms', async () => {
   const fay = await registerUser(server.baseUrl, 'Fay');
   const sub = subscription('sub_fay', { user: fay, plan: monthly });
   const meta = sub.metadata;
 
+  const periodEnd = now() + 30 * 86400;
   await deliver(event('customer.subscription.created', sub));
-  await deliver(event('invoice.paid', invoice('in_fay_1', { subId: sub.id, reason: 'subscription_create', metadata: meta })));
+  await deliver(event('invoice.paid', invoice('in_fay_1', { subId: sub.id, reason: 'subscription_create', metadata: meta, periodEnd })));
   let b = await billing(fay);
   assert.equal(b.plan.slug, 'pro-monthly');
   assert.equal(b.subscription.status, 'active');
   assert.equal(b.credits.balance, 1800);
+  assert.equal(b.credits.expiring.credits, 1800);
+  // They last for the period paid for, plus a day's grace for the renewal to clear.
+  assert.equal(new Date(b.credits.expiring.at).getTime(), (periodEnd + 86400) * 1000);
 
   // Already subscribed: a second subscription checkout is refused.
   const again = await api(server.baseUrl, 'POST', '/api/billing/checkout', { token: fay.token, body: { plan_id: monthly.id } });
@@ -227,8 +234,14 @@ test('a subscription grants its credits each paid period and keeps the terms it 
   // A mid-period change invoice grants nothing.
   await deliver(event('invoice.paid', invoice('in_fay_x', { subId: sub.id, reason: 'subscription_update', metadata: meta })));
   b = await billing(fay);
-  assert.equal(b.credits.balance, 3600);
+  // The unused 1,800 from the first period expired and the renewal's 1,800 replaced them.
+  assert.equal(b.credits.balance, 1800);
   assert.deepEqual((await purchases(fay.user.id)).map((r) => r.reason), ['Pro (first period)', 'Pro (renewal)']);
+  const [expiries] = await sequelize.query(
+    "SELECT amount_micros FROM credit_transactions WHERE user_id = :id AND type = 'expiry'",
+    { replacements: { id: fay.user.id } }
+  );
+  assert.deepEqual(expiries.map((r) => Number(r.amount_micros) / 1e6), [-1800]);
   await api(server.baseUrl, 'PATCH', `/api/admin/plans/${monthly.id}`, { token: admin.token, body: { credits: 1800 } });
 });
 
@@ -259,7 +272,7 @@ test('a failed renewal grants nothing, then ends the plan when Stripe gives up',
   b = await billing(hal);
   assert.equal(b.plan, null);
   assert.equal(b.subscription, null);
-  assert.equal(b.credits.balance, 1800, 'credits already paid for are kept');
+  assert.equal(b.credits.balance, 1800, 'credits already paid for last until their period ends');
 
   // A late, older event can't bring the subscription back.
   await deliver(event('customer.subscription.updated', { ...sub, status: 'active' }, { created: now() - 40 }));
@@ -281,4 +294,217 @@ test('the billing portal opens only for users who have bought something', async 
   assert.equal(res.status, 200);
   assert.equal(res.body.url, 'https://billing.stripe.test/p');
   assert.match(stripeMock.calls('/v1/billing_portal/sessions')[0].body.return_url, /\/upgrade$/);
+});
+
+test('plan credits are spent first and lapse when their period ends; top-ups never expire', async () => {
+  const jo = await registerUser(server.baseUrl, 'Jo');
+  await deliver(event('checkout.session.completed', {
+    id: 'cs_test_jo',
+    mode: 'payment',
+    payment_status: 'paid',
+    metadata: { user_id: jo.user.id, plan_id: topup.id, credits: '900' },
+  }));
+  const sub = subscription('sub_jo', { user: jo, plan: monthly });
+  await deliver(event('customer.subscription.created', sub));
+  await deliver(event('invoice.paid', invoice('in_jo_1', { subId: sub.id, reason: 'subscription_create', metadata: sub.metadata })));
+  let b = await billing(jo);
+  assert.equal(b.credits.balance, 2700);
+  assert.equal(b.credits.expiring.credits, 1800);
+
+  // A reply costing 300 credits is paid from the plan credits, which would lapse anyway.
+  const model = { id: null, name: 'Test model', input_credits_per_mtok: 1e6, output_credits_per_mtok: 1e6 };
+  const reply = { userId: jo.user.id, chatId: null, model, route: 'test', upstreamModel: 'test', messages: [{ content: 'hi' }] };
+  const meter = await metering.start({ ...reply, maxOutputTokens: 1000 });
+  await meter.finish({ status: 'succeeded', inputTokens: 100, outputTokens: 200 });
+  b = await billing(jo);
+  assert.equal(b.credits.balance, 2400);
+  assert.equal(b.credits.expiring.credits, 1500);
+
+  // Before the period ends, the sweep changes nothing.
+  await metering.expireSubscriptionCredits();
+  assert.equal((await billing(jo)).credits.balance, 2400);
+
+  // The period ends with no renewal while a reply is holding 2,000 credits:
+  // only what isn't held can expire now.
+  await sequelize.query("UPDATE credit_accounts SET subscription_expires_at = now() - interval '1 minute' WHERE user_id = :id", {
+    replacements: { id: jo.user.id },
+  });
+  // 21 estimated input tokens + 1,979 output tokens, at 1 credit per token.
+  const inFlight = await metering.start({ ...reply, maxOutputTokens: 1979 });
+  assert.equal(inFlight.holdMicros, 2000 * 1e6);
+  await metering.expireSubscriptionCredits();
+  b = await billing(jo);
+  assert.equal(b.credits.balance, 2000);
+  assert.equal(b.credits.expiring.credits, 1100);
+
+  // The reply fails (costing nothing); the next sweep expires the rest. The top-up stays.
+  await inFlight.finish({ status: 'failed', errorCode: 'PROVIDER_ERROR' });
+  await metering.expireSubscriptionCredits();
+  b = await billing(jo);
+  assert.equal(b.credits.balance, 900);
+  assert.equal(b.credits.expiring, null);
+  const [rows] = await sequelize.query(
+    "SELECT amount_micros FROM credit_transactions WHERE user_id = :id AND type = 'expiry' ORDER BY created_at",
+    { replacements: { id: jo.user.id } }
+  );
+  assert.deepEqual(rows.map((r) => Number(r.amount_micros) / 1e6), [-400, -1100]);
+});
+
+test('a Stripe refund takes back the refunded share of that payment’s credits, once', async () => {
+  const kai = await registerUser(server.baseUrl, 'Kai');
+  await deliver(event('checkout.session.completed', {
+    id: 'cs_test_kai',
+    mode: 'payment',
+    payment_status: 'paid',
+    payment_intent: 'pi_kai',
+    metadata: { user_id: kai.user.id, plan_id: topup.id, credits: '900' },
+  }));
+  stripeMock.fixtures.sessions.push({ id: 'cs_test_kai', payment_intent: 'pi_kai' });
+  stripeMock.fixtures.paymentIntents.push({ id: 'pi_kai', amount: 1000, amount_received: 1000 });
+
+  // A half refund ($5 of $10) takes back 450 credits; delivered twice, it counts once.
+  const half = event('refund.created', { id: 're_kai_1', object: 'refund', status: 'succeeded', amount: 500, payment_intent: 'pi_kai' });
+  await deliver(half);
+  await deliver(event('refund.updated', half.data.object));
+  assert.equal((await billing(kai)).credits.balance, 450);
+
+  // A pending refund changes nothing until it succeeds.
+  await deliver(event('refund.created', { id: 're_kai_2', status: 'pending', amount: 500, payment_intent: 'pi_kai' }));
+  assert.equal((await billing(kai)).credits.balance, 450);
+  await deliver(event('refund.updated', { id: 're_kai_2', status: 'succeeded', amount: 500, payment_intent: 'pi_kai' }));
+  assert.equal((await billing(kai)).credits.balance, 0);
+  const [rows] = await sequelize.query(
+    "SELECT amount_micros, reason FROM credit_transactions WHERE user_id = :id AND type = 'adjustment' ORDER BY created_at",
+    { replacements: { id: kai.user.id } }
+  );
+  assert.deepEqual(rows.map((r) => [Number(r.amount_micros) / 1e6, r.reason]), [
+    [-450, 'Payment partly refunded'],
+    [-450, 'Payment partly refunded'],
+  ]);
+});
+
+test('refunding a subscription payment whose credits were partly spent takes back only what is left', async () => {
+  const lia = await registerUser(server.baseUrl, 'Lia');
+  const sub = subscription('sub_lia', { user: lia, plan: monthly });
+  await deliver(event('customer.subscription.created', sub));
+  await deliver(event('invoice.paid', invoice('in_lia_1', { subId: sub.id, reason: 'subscription_create', metadata: sub.metadata })));
+  await metering.addCredits(lia.user.id, -1500, { type: 'adjustment', reason: 'spent (test)' });
+  stripeMock.fixtures.invoicePayments.push({ invoice: 'in_lia_1', payment_intent: 'pi_lia' });
+  stripeMock.fixtures.paymentIntents.push({ id: 'pi_lia', amount: 2000, amount_received: 2000 });
+
+  await deliver(event('refund.created', { id: 're_lia', status: 'succeeded', amount: 2000, payment_intent: 'pi_lia' }));
+  assert.equal((await billing(lia)).credits.balance, 0);
+  const [[row]] = await sequelize.query("SELECT reason FROM credit_transactions WHERE external_ref = 'stripe:refund:re_lia'");
+  assert.equal(row.reason, 'Payment refunded (1500 credits were already used)');
+});
+
+test('users see their Stripe invoices', async () => {
+  const mo = await registerUser(server.baseUrl, 'Mo');
+  assert.deepEqual((await api(server.baseUrl, 'GET', '/api/billing/invoices', { token: mo.token })).body.invoices, []);
+  await api(server.baseUrl, 'POST', '/api/billing/checkout', { token: mo.token, body: { plan_id: topup.id } });
+  const [[{ stripe_customer_id: customer }]] = await sequelize.query('SELECT stripe_customer_id FROM users WHERE id = :id', {
+    replacements: { id: mo.user.id },
+  });
+  stripeMock.fixtures.invoices.push(
+    { id: 'in_mo_1', customer, number: 'ABC-0001', created: 1790000000, total: 2500, currency: 'usd', status: 'paid', hosted_invoice_url: 'https://invoice.stripe.test/1', invoice_pdf: 'https://invoice.stripe.test/1.pdf' },
+    { id: 'in_mo_draft', customer, number: null, created: 1790000001, total: 2500, currency: 'usd', status: 'draft' },
+    { id: 'in_other', customer: 'cus_other', number: 'X', created: 1, total: 1, currency: 'usd', status: 'paid' }
+  );
+  const invoices = (await api(server.baseUrl, 'GET', '/api/billing/invoices', { token: mo.token })).body.invoices;
+  assert.deepEqual(invoices.map((i) => [i.number, i.amount_cents, i.status, i.url]), [['ABC-0001', 2500, 'paid', 'https://invoice.stripe.test/1']]);
+});
+
+// --- RevenueCat (App Store purchases)
+
+const RC_AUTH = 'Bearer rc-test-secret';
+let rcSeq = 0;
+const rcEvent = (type, user, fields = {}) => {
+  rcSeq += 1;
+  return {
+    api_version: '1.0',
+    event: {
+      id: `rc_evt_${rcSeq}`,
+      type,
+      app_user_id: user.user.id,
+      original_app_user_id: user.user.id,
+      aliases: [user.user.id],
+      environment: 'SANDBOX',
+      store: 'APP_STORE',
+      period_type: 'NORMAL',
+      event_timestamp_ms: Date.now() + rcSeq,
+      ...fields,
+    },
+  };
+};
+const rcDeliver = (body, auth = RC_AUTH) =>
+  fetch(`${server.baseUrl}/api/billing/revenuecat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: auth } : {}) },
+    body: JSON.stringify(body),
+  }).then(async (r) => ({ status: r.status, body: await r.json() }));
+
+test('App Store purchases through RevenueCat grant plan and top-up credits, once, to the right user', async () => {
+  process.env.REVENUECAT_WEBHOOK_AUTH = RC_AUTH;
+  await api(server.baseUrl, 'PATCH', `/api/admin/plans/${monthly.id}`, { token: admin.token, body: { revenuecat_product_id: 'cog_pro_monthly' } });
+  await api(server.baseUrl, 'PATCH', `/api/admin/plans/${topup.id}`, { token: admin.token, body: { revenuecat_product_id: 'cog_topup_10' } });
+  const nia = await registerUser(server.baseUrl, 'Nia');
+  const expires = Date.now() + 30 * 86400 * 1000;
+  const purchase = rcEvent('INITIAL_PURCHASE', nia, {
+    product_id: 'cog_pro_monthly', transaction_id: 'txn_1', original_transaction_id: 'otx_1', purchased_at_ms: Date.now(), expiration_at_ms: expires,
+  });
+
+  assert.equal((await rcDeliver(purchase, 'Bearer wrong')).status, 401);
+  assert.equal((await rcDeliver(purchase, null)).status, 401);
+  assert.equal((await rcDeliver(purchase)).status, 200);
+  assert.equal((await rcDeliver(purchase)).body.duplicate, true);
+  let b = await billing(nia);
+  assert.equal(b.plan.slug, 'pro-monthly');
+  assert.equal(b.subscription.source, 'revenuecat');
+  assert.equal(b.credits.balance, 1800);
+  assert.equal(new Date(b.credits.expiring.at).getTime(), expires + 86400 * 1000);
+
+  // Renewal: the unused credits are replaced by the new period's.
+  await rcDeliver(rcEvent('RENEWAL', nia, {
+    product_id: 'cog_pro_monthly', transaction_id: 'txn_2', original_transaction_id: 'otx_1', expiration_at_ms: expires + 30 * 86400 * 1000,
+  }));
+  // A top-up bought in the app.
+  await rcDeliver(rcEvent('NON_RENEWING_PURCHASE', nia, { product_id: 'cog_topup_10', transaction_id: 'txn_topup' }));
+  b = await billing(nia);
+  assert.equal(b.credits.balance, 1800 + 900);
+  const [[{ subs }]] = await sequelize.query('SELECT count(*)::int AS subs FROM subscriptions WHERE user_id = :id', { replacements: { id: nia.user.id } });
+  assert.equal(subs, 1, 'renewals update the same subscription');
+
+  // Cancelled: keeps working until the period ends, marked as not renewing.
+  await rcDeliver(rcEvent('CANCELLATION', nia, { product_id: 'cog_pro_monthly', transaction_id: 'txn_2', original_transaction_id: 'otx_1', cancel_reason: 'UNSUBSCRIBE', expiration_at_ms: expires + 30 * 86400 * 1000 }));
+  b = await billing(nia);
+  assert.equal(b.plan.slug, 'pro-monthly');
+  assert.equal(b.subscription.cancel_at_period_end, true);
+
+  // Expired: back to no plan; credits last until their period ends.
+  await rcDeliver(rcEvent('EXPIRATION', nia, { product_id: 'cog_pro_monthly', transaction_id: 'txn_2', original_transaction_id: 'otx_1', expiration_at_ms: Date.now() - 1000 }));
+  b = await billing(nia);
+  assert.equal(b.plan, null);
+  assert.equal(b.credits.balance, 2700);
+});
+
+test('an App Store refund ends the subscription and takes back that period’s credits', async () => {
+  process.env.REVENUECAT_WEBHOOK_AUTH = RC_AUTH;
+  const oli = await registerUser(server.baseUrl, 'Oli');
+  const fields = { product_id: 'cog_pro_monthly', transaction_id: 'txn_oli', original_transaction_id: 'otx_oli', expiration_at_ms: Date.now() + 30 * 86400 * 1000 };
+  await rcDeliver(rcEvent('INITIAL_PURCHASE', oli, fields));
+  assert.equal((await billing(oli)).credits.balance, 1800);
+  await rcDeliver(rcEvent('CANCELLATION', oli, { ...fields, cancel_reason: 'CUSTOMER_SUPPORT' }));
+  const b = await billing(oli);
+  assert.equal(b.plan, null);
+  assert.equal(b.credits.balance, 0);
+
+  // A free trial grants a plan but no credits.
+  const pat = await registerUser(server.baseUrl, 'Pat');
+  await rcDeliver(rcEvent('INITIAL_PURCHASE', pat, { ...fields, transaction_id: 'txn_pat', original_transaction_id: 'otx_pat', period_type: 'TRIAL' }));
+  assert.equal((await billing(pat)).plan.slug, 'pro-monthly');
+  assert.equal((await billing(pat)).credits.balance, 0);
+
+  // Unknown products and users are errors RevenueCat retries, not silent successes.
+  assert.equal((await rcDeliver(rcEvent('INITIAL_PURCHASE', pat, { ...fields, product_id: 'nope', transaction_id: 'x' }))).status, 500);
+  assert.equal((await rcDeliver(rcEvent('INITIAL_PURCHASE', { user: { id: '$RCAnonymousID:abc' } }, { ...fields, transaction_id: 'y' }))).status, 500);
 });

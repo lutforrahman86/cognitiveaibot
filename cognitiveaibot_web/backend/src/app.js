@@ -12,14 +12,18 @@ const subscriptionsRoutes = require('./routes/subscriptions');
 const usageLimitsRoutes = require('./routes/usageLimits');
 const adminRoutes = require('./routes/admin');
 const creditsRoutes = require('./routes/credits');
-const { plansRouter, billingRouter, webhookRouter } = require('./routes/billing');
+const { plansRouter, billingRouter, webhookRouter, revenueCatRouter } = require('./routes/billing');
+const developerRoutes = require('./routes/developer');
+const v1Router = require('./api/v1');
 
 const app = express();
 
 // Middleware
 app.use(cors({ origin: process.env.FRONTEND_URL || true, credentials: true }));
-// Before express.json(): Stripe signs the raw request body.
+// Before express.json(): Stripe signs the raw request body, and the developer
+// API parses its own (larger) bodies and answers errors in OpenAI's format.
 app.use('/api/billing/webhook', webhookRouter);
+app.use('/v1', v1Router);
 app.use(express.json());
 app.use(passport.initialize());
 
@@ -43,7 +47,9 @@ app.use('/api/usage-limits', usageLimitsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/credits', creditsRoutes);
 app.use('/api/plans', plansRouter);
+app.use('/api/billing/revenuecat', revenueCatRouter);
 app.use('/api/billing', billingRouter);
+app.use('/api/developer', developerRoutes);
 
 app.get('/api', (req, res) => {
   res.json({
@@ -71,9 +77,19 @@ app.get('/api', (req, res) => {
       'GET /api/plans',
       'GET /api/billing',
       'POST /api/billing/checkout',
+      'GET /api/billing/invoices',
       'POST /api/billing/portal',
       'POST /api/billing/webhook',
+      'POST /api/billing/revenuecat',
+      'GET /api/developer',
+      'POST /api/developer/keys',
+      'DELETE /api/developer/keys/:id',
+      'GET /api/developer/usage',
+      'GET /v1/models (API key)',
+      'GET /v1/models/:id (API key)',
+      'POST /v1/chat/completions (API key)',
       'GET /api/usage/dashboard',
+      'GET /api/usage/summary',
       'GET /api/usage/records',
       'GET /api/settings',
       'PATCH /api/settings',
@@ -92,6 +108,11 @@ app.get('/api', (req, res) => {
       'GET /api/admin/plans',
       'POST /api/admin/plans',
       'PATCH /api/admin/plans/:id',
+      'PATCH /api/admin/models/:id',
+      'POST /api/admin/users/:id/suspend',
+      'POST /api/admin/users/:id/unsuspend',
+      'POST /api/admin/requests/:id/refund',
+      'GET /api/admin/audit',
     ],
   });
 });

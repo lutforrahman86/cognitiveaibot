@@ -31,11 +31,6 @@ const AIModel = sequelize.define(
       type: DataTypes.STRING(150),
       allowNull: true,
     },
-    // The id on the aggregator (OpenRouter). Null: no aggregator route.
-    aggregator_model_id: {
-      type: DataTypes.STRING(150),
-      allowNull: true,
-    },
     context_window: { type: DataTypes.INTEGER, allowNull: true },
     max_output_tokens: { type: DataTypes.INTEGER, allowNull: true },
     // What the provider charges us, USD per 1M tokens.
@@ -45,6 +40,27 @@ const AIModel = sequelize.define(
     // can't be called: it would be free.
     input_credits_per_mtok: { type: DataTypes.DECIMAL(14, 4), allowNull: true },
     output_credits_per_mtok: { type: DataTypes.DECIMAL(14, 4), allowNull: true },
+    // The endpoint the model serves: chat, embedding, image, speech,
+    // transcription or video. Chat pickers list only 'chat' models.
+    api_kind: { type: DataTypes.STRING(20), defaultValue: 'chat' },
+    // What it's billed by. 'token' and 'character' use the per-1M prices
+    // above; 'second' uses unit_cost_usd / unit_credits per second.
+    pricing_unit: { type: DataTypes.STRING(12), defaultValue: 'token' },
+    unit_cost_usd: { type: DataTypes.DECIMAL(14, 6), allowNull: true },
+    unit_credits: { type: DataTypes.DECIMAL(14, 6), allowNull: true },
+    // What the model takes and produces ('text', 'image', 'audio', 'video',
+    // 'embedding'), and what it can do.
+    input_modalities: { type: DataTypes.ARRAY(DataTypes.TEXT), defaultValue: ['text'] },
+    output_modalities: { type: DataTypes.ARRAY(DataTypes.TEXT), defaultValue: ['text'] },
+    supports_streaming: { type: DataTypes.BOOLEAN, defaultValue: true },
+    supports_vision: { type: DataTypes.BOOLEAN, defaultValue: false },
+    supports_tools: { type: DataTypes.BOOLEAN, defaultValue: false },
+    supports_json: { type: DataTypes.BOOLEAN, defaultValue: false },
+    // Lifecycle label shown to users: beta, active or deprecated.
+    status: { type: DataTypes.STRING(12), defaultValue: 'active' },
+    // Access tier: callable by accounts whose plan unlocks at least this tier.
+    // 0 = everyone, including accounts with no plan.
+    tier: { type: DataTypes.SMALLINT, defaultValue: 0 },
     display_order: {
       type: DataTypes.INTEGER,
       defaultValue: 0,
@@ -67,9 +83,10 @@ AIModel.findAll = async function (filters = {}) {
   // Sequelize's own findOne/findByPk call findAll with `plain: true`; those
   // must reach Sequelize, not this filter (as in User.findAll).
   if (filters.plain) return _baseFindAll(filters);
-  const { category, provider, search, includeInactive } = filters;
+  const { category, provider, search, includeInactive, apiKind } = filters;
   const where = {};
   if (!includeInactive) where.is_active = true;
+  if (apiKind) where.api_kind = apiKind;
   if (category) where.category = category;
   if (provider) where.provider = provider;
   if (search) {

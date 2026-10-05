@@ -26,8 +26,20 @@ async function startMockProvider({ echo = false } = {}) {
   const server = http.createServer(async (req, res) => {
     let raw = '';
     for await (const chunk of req) raw += chunk;
-    const request = { method: req.method, url: req.url, headers: req.headers, body: raw ? JSON.parse(raw) : null };
+    const type = req.headers['content-type'] || '';
+    const request = { method: req.method, url: req.url, headers: req.headers, body: null, fields: {} };
+    if (raw && type.includes('json')) request.body = JSON.parse(raw);
+    else if (type.includes('multipart/form-data')) {
+      // Text fields of a multipart upload (the file part is kept as its size).
+      for (const part of raw.split(/--[^\r\n]+\r\n/)) {
+        const m = part.match(/name="([^"]+)"(; filename="([^"]*)")?[^]*?\r\n\r\n([^]*)\r\n$/);
+        if (m) request.fields[m[1]] = m[2] ? { filename: m[3], bytes: Buffer.byteLength(m[4]) } : m[4];
+      }
+    }
     mock.requests.push(request);
+
+    const media = handleMedia(req, res, request, mock);
+    if (media) return;
 
     if (req.method === 'GET' && req.url.endsWith('/models')) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -80,6 +92,66 @@ async function startMockProvider({ echo = false } = {}) {
   mock.baseUrl = `http://127.0.0.1:${server.address().port}/v1`;
   mock.close = () => new Promise((r) => server.close(r));
   return mock;
+}
+
+/**
+ * OpenAI's media endpoints. `mock.videos` maps a video id to its state
+ * ({ status, progress }); tests move a video along by editing it.
+ */
+function handleMedia(req, res, request, mock) {
+  const json = (status, body) => {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(body));
+    return true;
+  };
+  const { status = 200 } = mock.reply;
+  const path = req.url.replace(/^\/v1/, '');
+  const isMedia = /^\/(embeddings|images\/generations|audio\/speech|audio\/transcriptions|videos)/.test(path);
+  if (!isMedia) return false;
+  if (status !== 200) return json(status, { error: { message: 'mock upstream error' } });
+
+  if (req.method === 'POST' && path === '/embeddings') {
+    const inputs = [].concat(request.body.input);
+    return json(200, {
+      object: 'list',
+      data: inputs.map((t, index) => ({ object: 'embedding', index, embedding: [0.1, 0.2, 0.3] })),
+      usage: { prompt_tokens: mock.reply.embeddingTokens ?? inputs.length * 5, total_tokens: inputs.length * 5 },
+    });
+  }
+  if (req.method === 'POST' && path === '/images/generations') {
+    const n = request.body.n || 1;
+    return json(200, {
+      created: 1,
+      data: Array.from({ length: n }, () => ({ b64_json: Buffer.from('fake-png').toString('base64') })),
+      usage: mock.reply.imageUsage ?? { input_tokens: 10, output_tokens: 272 * n, total_tokens: 10 + 272 * n },
+    });
+  }
+  if (req.method === 'POST' && path === '/audio/speech') {
+    res.writeHead(200, { 'Content-Type': 'audio/mpeg' });
+    res.end(Buffer.from('fake-mp3-audio'));
+    return true;
+  }
+  if (req.method === 'POST' && path === '/audio/transcriptions') {
+    return json(200, { task: 'transcribe', language: 'english', duration: mock.reply.duration ?? 3.2, text: 'hello world', segments: [] });
+  }
+  mock.videos = mock.videos || {};
+  if (req.method === 'POST' && path === '/videos') {
+    const id = `video_mock_${Object.keys(mock.videos).length + 1}`;
+    mock.videos[id] = { status: 'queued', progress: 0 };
+    return json(200, { id, object: 'video', status: 'queued', progress: 0 });
+  }
+  const content = path.match(/^\/videos\/([^/]+)\/content$/);
+  if (req.method === 'GET' && content) {
+    res.writeHead(200, { 'Content-Type': 'video/mp4' });
+    res.end(Buffer.from('fake-mp4-video-bytes'));
+    return true;
+  }
+  const one = path.match(/^\/videos\/([^/]+)$/);
+  if (req.method === 'GET' && one) {
+    const v = mock.videos[one[1]];
+    return v ? json(200, { id: one[1], object: 'video', ...v }) : json(404, { error: { message: 'no such video' } });
+  }
+  return json(404, { error: { message: 'no mock' } });
 }
 
 // Anthropic Messages API streaming format: input tokens arrive in

@@ -12,6 +12,12 @@ import {
   checkModelUpdates,
   getAdminPlans,
   saveAdminPlan,
+  updateAdminModel,
+  suspendUser,
+  unsuspendUser,
+  getAdminRequests,
+  refundRequest,
+  getAuditLog,
 } from '../api/admin'
 
 const router = useRouter()
@@ -25,6 +31,8 @@ const menuItems = [
   { id: 'plans', label: 'Plans', icon: '▤' },
   { id: 'subscriptions', label: 'Subscriptions', icon: '◆' },
   { id: 'usage', label: 'Usage', icon: '⎙' },
+  { id: 'requests', label: 'Requests', icon: '⇄' },
+  { id: 'audit', label: 'Audit log', icon: '☰' },
 ]
 
 const activeTab = ref('overview')
@@ -45,6 +53,13 @@ const modelsLoading = ref(false)
 const modelCheckResult = ref(null)
 const modelCheckLoading = ref(false)
 const plans = ref([])
+// The model form: null when closed.
+const modelForm = ref(null)
+const modelFormError = ref('')
+const modelSaving = ref(false)
+const requests = ref([])
+const auditActions = ref([])
+const KIND_LABELS = { chat: 'Chat', embedding: 'Embeddings', image: 'Image', speech: 'Speech', transcription: 'Transcription', video: 'Video' }
 // The plan form: null when closed; `id` is null for a new plan.
 const planForm = ref(null)
 const planFormError = ref('')
@@ -208,6 +223,140 @@ async function handleCheckModelUpdates() {
   }
 }
 
+function modelPrice(m) {
+  if (m.pricing_unit === 'second') return m.unit_credits != null ? `${formatCredits(m.unit_credits)} / second` : '—'
+  if (m.input_credits_per_mtok == null) return '—'
+  if (m.pricing_unit === 'character') return `${formatCredits(m.input_credits_per_mtok)} / 1M chars`
+  return `${formatCredits(m.input_credits_per_mtok)} · ${formatCredits(m.output_credits_per_mtok)}`
+}
+
+function modelCost(m) {
+  if (m.pricing_unit === 'second') return m.unit_cost_usd != null ? `${formatUsd(m.unit_cost_usd)} / s` : '—'
+  if (m.input_cost_per_mtok == null) return '—'
+  return `${formatCurrency(m.input_cost_per_mtok)} · ${formatCurrency(m.output_cost_per_mtok)}`
+}
+
+function editModel(m) {
+  modelFormError.value = ''
+  modelForm.value = {
+    id: m.id,
+    name: m.name,
+    slug: m.slug,
+    pricing_unit: m.pricing_unit,
+    is_active: m.is_active,
+    status: m.status || 'active',
+    tier: m.tier || 0,
+    provider_model_id: m.provider_model_id || '',
+    input_credits_per_mtok: m.input_credits_per_mtok ?? '',
+    output_credits_per_mtok: m.output_credits_per_mtok ?? '',
+    input_cost_per_mtok: m.input_cost_per_mtok ?? '',
+    output_cost_per_mtok: m.output_cost_per_mtok ?? '',
+    unit_credits: m.unit_credits ?? '',
+    unit_cost_usd: m.unit_cost_usd ?? '',
+    context_window: m.context_window ?? '',
+    max_output_tokens: m.max_output_tokens ?? '',
+    supports_vision: m.supports_vision,
+    supports_tools: m.supports_tools,
+    supports_json: m.supports_json,
+  }
+}
+
+async function submitModel() {
+  const f = modelForm.value
+  const num = (v) => (v === '' || v === null ? null : Number(v))
+  const changes = {
+    is_active: f.is_active,
+    status: f.status,
+    tier: Number(f.tier),
+    provider_model_id: f.provider_model_id.trim() || null,
+    supports_vision: f.supports_vision,
+    supports_tools: f.supports_tools,
+    supports_json: f.supports_json,
+    context_window: num(f.context_window),
+    max_output_tokens: num(f.max_output_tokens),
+    ...(f.pricing_unit === 'second'
+      ? { unit_credits: num(f.unit_credits), unit_cost_usd: num(f.unit_cost_usd) }
+      : {
+          input_credits_per_mtok: num(f.input_credits_per_mtok),
+          output_credits_per_mtok: num(f.output_credits_per_mtok),
+          input_cost_per_mtok: num(f.input_cost_per_mtok),
+          output_cost_per_mtok: num(f.output_cost_per_mtok),
+        }),
+  }
+  modelFormError.value = ''
+  modelSaving.value = true
+  try {
+    await updateAdminModel(f.id, changes)
+    modelForm.value = null
+    await loadModels()
+  } catch (err) {
+    modelFormError.value = err.message
+  } finally {
+    modelSaving.value = false
+  }
+}
+
+async function handleSuspend(u) {
+  try {
+    if (u.suspended_at) {
+      if (!window.confirm(`Restore ${u.email}'s access?`)) return
+      await unsuspendUser(u.id)
+    } else {
+      const reason = window.prompt(`Suspend ${u.email}? They won't be able to sign in, chat or use API keys.\n\nReason (kept in the audit log):`, '')
+      if (reason === null) return
+      await suspendUser(u.id, reason)
+    }
+    await loadUsers()
+  } catch (err) {
+    window.alert(err.message)
+  }
+}
+
+async function loadRequests() {
+  try {
+    requests.value = (await getAdminRequests(100)).requests || []
+  } catch (err) {
+    error.value = err.message
+  }
+}
+
+async function handleRefund(r) {
+  const reason = window.prompt(`Refund ${formatCredits(r.charged_credits)} credits to ${r.email}?\n\nReason (kept in the audit log):`, '')
+  if (reason === null) return
+  try {
+    await refundRequest(r.id, reason)
+    await loadRequests()
+  } catch (err) {
+    window.alert(err.message)
+  }
+}
+
+async function loadAudit() {
+  try {
+    auditActions.value = (await getAuditLog(200)).actions || []
+  } catch (err) {
+    error.value = err.message
+  }
+}
+
+function describeAction(a) {
+  const d = a.details || {}
+  switch (a.action) {
+    case 'model.update':
+      return `${d.slug}: ${Object.entries(d.after || {}).map(([k, v]) => `${k} ${JSON.stringify(d.before?.[k])} → ${JSON.stringify(v)}`).join(', ')}`
+    case 'user.suspend':
+      return `${d.email}: ${d.reason}`
+    case 'user.unsuspend':
+      return d.email
+    case 'credits.adjust':
+      return `${d.credits > 0 ? '+' : ''}${d.credits} credits: ${d.reason}`
+    case 'request.refund':
+      return `${d.credits} credits: ${d.reason}`
+    default:
+      return JSON.stringify(d)
+  }
+}
+
 async function loadPlans() {
   try {
     plans.value = await getAdminPlans()
@@ -234,10 +383,17 @@ function editPlan(p = null) {
         price: (p.price_cents / 100).toFixed(2),
         credits: p.credits,
         includes_api: p.includes_api,
+        model_tier: p.model_tier || 0,
+        revenuecat_product_id: p.revenuecat_product_id || '',
+        api_requests_per_minute: p.api_requests_per_minute,
+        api_tokens_per_minute: p.api_tokens_per_minute,
         active: p.active,
         sort_order: p.sort_order,
       }
-    : { id: null, slug: '', name: '', description: '', kind: 'subscription', interval: 'month', price: '', credits: '', includes_api: false, active: true, sort_order: 0 }
+    : {
+        id: null, slug: '', name: '', description: '', kind: 'subscription', interval: 'month', price: '', credits: '',
+        includes_api: false, model_tier: 0, revenuecat_product_id: '', api_requests_per_minute: 60, api_tokens_per_minute: 200000, active: true, sort_order: 0,
+      }
 }
 
 async function submitPlan() {
@@ -255,6 +411,10 @@ async function submitPlan() {
         price_cents: Math.round(Number(f.price) * 100),
         credits: Number(f.credits),
         includes_api: f.includes_api,
+        model_tier: Number(f.model_tier) || 0,
+        revenuecat_product_id: f.revenuecat_product_id.trim() || null,
+        api_requests_per_minute: Number(f.api_requests_per_minute),
+        api_tokens_per_minute: Number(f.api_tokens_per_minute),
         active: f.active,
         sort_order: Number(f.sort_order) || 0,
       },
@@ -276,6 +436,8 @@ function onTabChange(tab) {
   else if (tab === 'usage') loadUsage()
   else if (tab === 'models') loadModels()
   else if (tab === 'plans') loadPlans()
+  else if (tab === 'requests') loadRequests()
+  else if (tab === 'audit') loadAudit()
 }
 
 onMounted(async () => {
@@ -472,51 +634,93 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <form v-if="modelForm" class="plan-form" @submit.prevent="submitModel">
+          <h3>Edit {{ modelForm.name }} <code class="model-slug">{{ modelForm.slug }}</code></h3>
+          <div class="plan-form-grid">
+            <label class="plan-form-check"><input v-model="modelForm.is_active" type="checkbox" /> Switched on</label>
+            <label>Status
+              <select v-model="modelForm.status">
+                <option value="beta">Beta</option>
+                <option value="active">Active</option>
+                <option value="deprecated">Deprecated</option>
+              </select>
+            </label>
+            <label>Tier (0 = everyone)
+              <input v-model="modelForm.tier" type="number" min="0" max="9" step="1" required />
+            </label>
+            <label>Provider's model id <input v-model="modelForm.provider_model_id" placeholder="Not connected" /></label>
+            <template v-if="modelForm.pricing_unit === 'second'">
+              <label>Credits per second <input v-model="modelForm.unit_credits" type="number" min="0" step="any" /></label>
+              <label>Our cost per second (USD) <input v-model="modelForm.unit_cost_usd" type="number" min="0" step="any" /></label>
+            </template>
+            <template v-else>
+              <label>{{ modelForm.pricing_unit === 'character' ? 'Credits / 1M characters' : 'Input credits / 1M tokens' }}
+                <input v-model="modelForm.input_credits_per_mtok" type="number" min="0" step="any" />
+              </label>
+              <label v-if="modelForm.pricing_unit === 'token'">Output credits / 1M tokens
+                <input v-model="modelForm.output_credits_per_mtok" type="number" min="0" step="any" />
+              </label>
+              <label>{{ modelForm.pricing_unit === 'character' ? 'Our cost / 1M characters (USD)' : 'Our input cost / 1M (USD)' }}
+                <input v-model="modelForm.input_cost_per_mtok" type="number" min="0" step="any" />
+              </label>
+              <label v-if="modelForm.pricing_unit === 'token'">Our output cost / 1M (USD)
+                <input v-model="modelForm.output_cost_per_mtok" type="number" min="0" step="any" />
+              </label>
+            </template>
+            <label>Context window (tokens) <input v-model="modelForm.context_window" type="number" min="1" step="1" /></label>
+            <label>Output limit (tokens) <input v-model="modelForm.max_output_tokens" type="number" min="1" step="1" /></label>
+            <label class="plan-form-check"><input v-model="modelForm.supports_vision" type="checkbox" /> Vision</label>
+            <label class="plan-form-check"><input v-model="modelForm.supports_tools" type="checkbox" /> Tool calling</label>
+            <label class="plan-form-check"><input v-model="modelForm.supports_json" type="checkbox" /> JSON output</label>
+          </div>
+          <p class="usage-note">A model without both prices can't be called. Price changes apply to the next request.</p>
+          <p v-if="modelFormError" class="plan-form-error" role="alert">{{ modelFormError }}</p>
+          <div class="plan-form-actions">
+            <button type="submit" class="btn-check-updates" :disabled="modelSaving">{{ modelSaving ? 'Saving…' : 'Save model' }}</button>
+            <button type="button" class="btn-adjust" @click="modelForm = null">Cancel</button>
+          </div>
+        </form>
+
         <div v-if="modelsLoading" class="admin-loading">Loading models...</div>
         <div v-else class="table-wrap">
           <table class="admin-table">
             <thead>
               <tr>
                 <th>Name</th>
-                <th>Slug</th>
+                <th>Type</th>
                 <th>Provider</th>
-                <th>Category</th>
-                <th>Credits / 1M tokens (in · out)</th>
-                <th>Provider cost / 1M (in · out)</th>
+                <th>Credits (in · out / 1M)</th>
+                <th>Our cost</th>
+                <th>Tier</th>
                 <th>Callable</th>
                 <th>Status</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="m in models" :key="m.id">
-                <td><span class="model-name">{{ m.name }}</span></td>
-                <td><code class="model-slug">{{ m.slug }}</code></td>
+                <td>
+                  <span class="model-name">{{ m.name }}</span>
+                  <code class="model-slug">{{ m.slug }}</code>
+                </td>
+                <td>{{ KIND_LABELS[m.api_kind] || m.api_kind }}</td>
                 <td>{{ m.provider || '—' }}</td>
-                <td>{{ m.category || '—' }}</td>
-                <td>
-                  <template v-if="m.input_credits_per_mtok != null">
-                    {{ formatCredits(m.input_credits_per_mtok) }} · {{ formatCredits(m.output_credits_per_mtok) }}
-                  </template>
-                  <template v-else>—</template>
-                </td>
-                <td>
-                  <template v-if="m.input_cost_per_mtok != null">
-                    {{ formatCurrency(m.input_cost_per_mtok) }} · {{ formatCurrency(m.output_cost_per_mtok) }}
-                  </template>
-                  <template v-else>—</template>
-                </td>
+                <td>{{ modelPrice(m) }}</td>
+                <td>{{ modelCost(m) }}</td>
+                <td>{{ m.tier ? `Tier ${m.tier}` : 'All' }}</td>
                 <td>
                   <span v-if="m.available" class="badge active">Yes</span>
                   <span v-else class="model-unavailable">{{ UNAVAILABLE_REASONS[m.unavailable_reason] || 'No' }}</span>
                 </td>
                 <td>
                   <span class="badge" :class="m.is_active ? 'active' : 'inactive'">
-                    {{ m.is_active ? 'Active' : 'Inactive' }}
+                    {{ m.is_active ? (m.status === 'active' ? 'On' : m.status === 'beta' ? 'Beta' : 'Deprecated') : 'Off' }}
                   </span>
                 </td>
+                <td><button class="btn-adjust" @click="editModel(m)">Edit</button></td>
               </tr>
               <tr v-if="!modelsLoading && !models.length">
-                <td colspan="8" class="empty">No models</td>
+                <td colspan="9" class="empty">No models</td>
               </tr>
             </tbody>
           </table>
@@ -547,7 +751,11 @@ onUnmounted(() => {
                   <span v-if="u.credits_held" class="user-name">({{ formatCredits(u.credits_held) }} held)</span>
                 </td>
                 <td>{{ formatDate(u.created_at) }}</td>
-                <td><button class="btn-adjust" @click="handleAdjustCredits(u)">Adjust credits</button></td>
+                <td class="row-actions">
+                  <span v-if="u.suspended_at" class="badge inactive" :title="u.suspended_reason">Suspended</span>
+                  <button class="btn-adjust" @click="handleAdjustCredits(u)">Adjust credits</button>
+                  <button class="btn-adjust" @click="handleSuspend(u)">{{ u.suspended_at ? 'Unsuspend' : 'Suspend' }}</button>
+                </td>
               </tr>
               <tr v-if="!users.length">
                 <td colspan="6" class="empty">No users</td>
@@ -589,8 +797,14 @@ onUnmounted(() => {
               <input v-model="planForm.credits" type="number" min="1" step="1" required />
             </label>
             <label>Sort order <input v-model="planForm.sort_order" type="number" step="1" /></label>
+            <label>Unlocks model tier <input v-model="planForm.model_tier" type="number" min="0" max="9" step="1" /></label>
+            <label>App Store product id <input v-model="planForm.revenuecat_product_id" placeholder="Not sold in the app" /></label>
             <label class="plan-form-wide">Description <input v-model="planForm.description" /></label>
             <label class="plan-form-check"><input v-model="planForm.includes_api" type="checkbox" /> Includes API access</label>
+            <template v-if="planForm.includes_api">
+              <label>API requests / minute <input v-model="planForm.api_requests_per_minute" type="number" min="1" step="1" required /></label>
+              <label>API tokens / minute <input v-model="planForm.api_tokens_per_minute" type="number" min="1" step="1" required /></label>
+            </template>
             <label class="plan-form-check"><input v-model="planForm.active" type="checkbox" /> On sale</label>
           </div>
           <p v-if="planFormError" class="plan-form-error" role="alert">{{ planFormError }}</p>
@@ -622,13 +836,73 @@ onUnmounted(() => {
                 <td>{{ p.kind === 'topup' ? 'Top-up' : 'Subscription' }}</td>
                 <td>{{ formatPlanPrice(p) }}</td>
                 <td>{{ formatCredits(p.credits) }}</td>
-                <td>{{ p.includes_api ? 'Yes' : '—' }}</td>
+                <td>{{ p.includes_api ? `${formatCredits(p.api_requests_per_minute)} req/min` : '—' }}</td>
                 <td><span class="badge" :class="p.active ? 'active' : 'inactive'">{{ p.active ? 'On sale' : 'Off sale' }}</span></td>
                 <td><button class="btn-adjust" @click="editPlan(p)">Edit</button></td>
               </tr>
               <tr v-if="!plans.length">
                 <td colspan="7" class="empty">No plans yet. Create one so users have something to buy.</td>
               </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div v-if="activeTab === 'requests'" class="admin-section">
+        <h2>Recent requests</h2>
+        <p class="usage-note">Every model call, newest first. Refund returns a request's charge to the user.</p>
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>User</th>
+                <th>Model</th>
+                <th>Source</th>
+                <th>Usage</th>
+                <th>Charged</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in requests" :key="r.id">
+                <td>{{ formatDate(r.created_at) }}</td>
+                <td>{{ r.email || '—' }}</td>
+                <td>{{ r.model_name || r.upstream_model }}</td>
+                <td>{{ r.source === 'api' ? 'API' : 'App' }}</td>
+                <td>
+                  <template v-if="r.unit">{{ formatCredits(r.units) }} {{ r.unit }}s</template>
+                  <template v-else-if="r.input_tokens != null">{{ formatNumber(r.input_tokens) }} / {{ formatNumber(r.output_tokens) }} tok</template>
+                  <template v-else>—</template>
+                </td>
+                <td>{{ formatCredits(r.charged_credits) }}</td>
+                <td><span class="badge" :class="r.status === 'succeeded' ? 'active' : 'inactive'">{{ r.status }}</span></td>
+                <td>
+                  <span v-if="r.refunded" class="model-unavailable">Refunded</span>
+                  <button v-else-if="r.charged_credits > 0" class="btn-adjust" @click="handleRefund(r)">Refund</button>
+                </td>
+              </tr>
+              <tr v-if="!requests.length"><td colspan="8" class="empty">No requests yet</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div v-if="activeTab === 'audit'" class="admin-section">
+        <h2>Audit log</h2>
+        <p class="usage-note">Every change an admin made, newest first.</p>
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>When</th><th>Admin</th><th>Action</th><th>Details</th></tr></thead>
+            <tbody>
+              <tr v-for="a in auditActions" :key="a.id">
+                <td>{{ formatDate(a.created_at) }}</td>
+                <td>{{ a.admin_email || '—' }}</td>
+                <td><code class="model-slug">{{ a.action }}</code></td>
+                <td class="audit-details">{{ describeAction(a) }}</td>
+              </tr>
+              <tr v-if="!auditActions.length"><td colspan="4" class="empty">No admin actions yet</td></tr>
             </tbody>
           </table>
         </div>
@@ -1395,6 +1669,20 @@ onUnmounted(() => {
   gap: 0.75rem;
   align-items: center;
   margin-top: 1rem;
+}
+
+.row-actions {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.audit-details {
+  white-space: normal;
+  max-width: 32rem;
+  font-size: 0.8125rem;
+  color: #c9d1d9;
 }
 
 .model-unavailable {

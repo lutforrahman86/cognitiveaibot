@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { isAuthenticated } from '../api/auth'
 import { getPlans, getBilling, getCredits, startCheckout, openBillingPortal } from '../api/chat'
+import InvoiceList from '../components/InvoiceList.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -39,7 +40,7 @@ const formatCredits = (n) => Number(n).toLocaleString('en-US', { maximumFraction
 const formatDate = (d) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
 const statusLine = computed(() => {
-  if (!sub.value) return 'You’re not subscribed. Credits you buy never expire.'
+  if (!sub.value) return 'You’re not subscribed. Top-up credits never expire.'
   if (sub.value.payment_failed) return 'Your last payment failed. Update your card in Manage billing to keep your plan.'
   if (!sub.value.current_period_end) return 'Active.'
   return sub.value.cancel_at_period_end
@@ -127,7 +128,10 @@ onUnmounted(() => clearInterval(pollTimer))
     <router-link :to="signedIn ? '/chat' : '/'" class="back-link">← Back</router-link>
     <header class="page-header">
       <h1>Plans & credits</h1>
-      <p>Every model is paid for in credits. Subscribe for credits every month, or top up once.</p>
+      <p>
+        Every model is paid for in credits. A plan gives you credits each month, used first and reset at
+        renewal; top-up credits never expire.
+      </p>
     </header>
 
     <div v-if="checkoutState" class="notice" :class="checkoutState === 'cancelled' ? 'notice-muted' : 'notice-ok'" role="status">
@@ -154,6 +158,9 @@ onUnmounted(() => clearInterval(pollTimer))
         <div class="status-right">
           <div class="label">Available credits</div>
           <div class="status-credits">{{ formatCredits(billing.credits.available) }}</div>
+          <div v-if="billing.credits.expiring" class="muted small">
+            {{ formatCredits(billing.credits.expiring.credits) }} plan credits expire {{ formatDate(billing.credits.expiring.at) }}
+          </div>
           <button
             v-if="hasPurchased && paymentsEnabled"
             class="btn btn-secondary"
@@ -182,6 +189,10 @@ onUnmounted(() => clearInterval(pollTimer))
               {{ formatPrice(plan) }}<span class="per">/{{ plan.interval }}</span>
             </div>
             <div class="plan-credits">{{ formatCredits(plan.credits) }} credits every {{ plan.interval }}</div>
+            <div v-if="plan.api_limits" class="plan-api muted small">
+              API: {{ formatCredits(plan.api_limits.requests_per_minute) }} requests and
+              {{ formatCredits(plan.api_limits.tokens_per_minute) }} tokens per minute
+            </div>
             <p v-if="plan.description" class="plan-desc">{{ plan.description }}</p>
             <button
               class="btn btn-primary"
@@ -210,6 +221,8 @@ onUnmounted(() => clearInterval(pollTimer))
       </section>
 
       <p v-if="!plans.length" class="muted">No plans are available yet.</p>
+
+      <InvoiceList v-if="signedIn" />
 
       <section v-if="signedIn && activity.length" class="plan-section">
         <h2>Recent credit activity</h2>

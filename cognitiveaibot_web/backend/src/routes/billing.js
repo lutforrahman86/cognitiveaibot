@@ -3,8 +3,10 @@ const { authMiddleware } = require('../middleware/auth');
 const { GatewayError } = require('../gateway/errors');
 const { getBalance } = require('../gateway/metering');
 const { listPlans, toPublic } = require('../billing/plans');
-const { getEntitlement, startCheckout, openPortal } = require('../billing/service');
+const { getEntitlement, startCheckout, openPortal, listInvoices } = require('../billing/service');
 const { handleWebhook } = require('../billing/webhooks');
+const { cached } = require('../services/cache');
+const { handleRevenueCatWebhook } = require('../billing/revenuecat');
 
 function respond(label, fn) {
   return async (req, res) => {
@@ -20,7 +22,10 @@ function respond(label, fn) {
 
 /** GET /api/plans — the active plan catalog. Public: the pricing page needs it signed out. */
 const plansRouter = express.Router();
-plansRouter.get('/', respond('list plans', async () => ({ plans: (await listPlans()).map(toPublic) })));
+plansRouter.get(
+  '/',
+  respond('list plans', () => cached('plans', 300, async () => ({ plans: (await listPlans()).map(toPublic) })))
+);
 
 /**
  * POST /api/billing/webhook — Stripe events. Mounted before express.json():
@@ -31,6 +36,13 @@ webhookRouter.post(
   '/',
   express.raw({ type: '*/*', limit: '1mb' }),
   respond('process webhook', (req) => handleWebhook(req.body, req.headers['stripe-signature']))
+);
+
+/** POST /api/billing/revenuecat — App Store purchases, authorized by RevenueCat's header. */
+const revenueCatRouter = express.Router();
+revenueCatRouter.post(
+  '/',
+  respond('process RevenueCat webhook', (req) => handleRevenueCatWebhook(req.body, req.headers.authorization))
 );
 
 const billingRouter = express.Router();
@@ -48,7 +60,10 @@ billingRouter.get(
 /** POST /api/billing/checkout { plan_id } — returns the Stripe Checkout URL to send the user to. */
 billingRouter.post('/checkout', respond('start checkout', (req) => startCheckout(req.user.id, req.body?.plan_id)));
 
+/** GET /api/billing/invoices — the caller's Stripe invoices. */
+billingRouter.get('/invoices', respond('list invoices', async (req) => ({ invoices: await listInvoices(req.user.id) })));
+
 /** POST /api/billing/portal — returns the Stripe billing portal URL. */
 billingRouter.post('/portal', respond('open billing portal', (req) => openPortal(req.user.id)));
 
-module.exports = { plansRouter, billingRouter, webhookRouter };
+module.exports = { plansRouter, billingRouter, webhookRouter, revenueCatRouter };

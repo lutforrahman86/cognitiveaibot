@@ -9,10 +9,13 @@ const { GatewayError, fromUpstreamStatus } = require('./errors');
  *
  * `events` async-iterates `{ type: 'delta', text }`. `usage` holds the token
  * counts once the provider reports them (some only do with stream_options),
- * and keeps them even if the stream is stopped part-way.
+ * and keeps them even if the stream is stopped part-way. `stopReason` is
+ * 'stop' or 'length' once the provider says why it finished.
+ *
+ * `options` may carry temperature, top_p and stop, passed through as given.
  */
-async function openChatStream({ provider, model, messages, maxTokens, signal }) {
-  const body = { model, messages, stream: true, [provider.maxTokensParam]: maxTokens };
+async function openChatStream({ provider, model, messages, maxTokens, signal, options = {} }) {
+  const body = { model, messages, stream: true, [provider.maxTokensParam]: maxTokens, ...options };
   if (provider.streamUsage) body.stream_options = { include_usage: true };
 
   let res;
@@ -44,11 +47,14 @@ async function openChatStream({ provider, model, messages, maxTokens, signal }) 
   // (saving the user's message) before they start reading; an unlocked body
   // could be cancelled in between, silently losing the whole reply.
   const reader = res.body.getReader();
-  const usage = { inputTokens: undefined, outputTokens: undefined };
+  const usage = { inputTokens: undefined, outputTokens: undefined, stopReason: undefined };
   return {
     events: readEvents(reader, provider, model, usage),
     get usage() {
       return usage;
+    },
+    get stopReason() {
+      return usage.stopReason;
     },
   };
 }
@@ -88,6 +94,8 @@ async function* readEvents(reader, provider, model, usage) {
 
         const text = payload.choices?.[0]?.delta?.content;
         if (text) yield { type: 'delta', text };
+        const finish = payload.choices?.[0]?.finish_reason;
+        if (finish) usage.stopReason = finish === 'length' ? 'length' : 'stop';
 
         if (payload.usage) {
           usage.inputTokens = payload.usage.prompt_tokens ?? 0;

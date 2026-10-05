@@ -1,0 +1,191 @@
+{
+  "_about": "Media model catalog: OpenAI image, speech, transcription, embedding and video models, called directly with OpenAI's key. Costs are OpenAI's published list prices as last known on 2026-10-05; confirm them at openai.com/api/pricing before launch (admins can edit prices in the Models tab). Credit prices follow the same rule as text: cost + 30% at 1 credit = US$0.01, so per-1M-unit credits = USD x 130 and per-second credits = USD x 130. Embeddings and images are billed by tokens (images: text in, image tokens out, as OpenAI reports them); speech by characters of input text; transcription by seconds of audio; video by seconds generated (sora-2-pro at its 720p price, so only 720p sizes are offered).",
+  "retired_slugs": [],
+  "models": [
+    {
+      "slug": "text-embedding-3-small",
+      "name": "Text Embedding 3 Small",
+      "provider": "OpenAI",
+      "provider_model_id": "text-embedding-3-small",
+      "display_order": 200,
+      "api_kind": "embedding",
+      "pricing_unit": "token",
+      "category": "Embeddings",
+      "input_cost_per_mtok": 0.02,
+      "output_cost_per_mtok": 0,
+      "input_credits_per_mtok": 2.6,
+      "output_credits_per_mtok": 0,
+      "context_window": 8191,
+      "input_modalities": [
+        "text"
+      ],
+      "output_modalities": [
+        "embedding"
+      ],
+      "supports_streaming": false
+    },
+    {
+      "slug": "text-embedding-3-large",
+      "name": "Text Embedding 3 Large",
+      "provider": "OpenAI",
+      "provider_model_id": "text-embedding-3-large",
+      "display_order": 201,
+      "api_kind": "embedding",
+      "pricing_unit": "token",
+      "category": "Embeddings",
+      "input_cost_per_mtok": 0.13,
+      "output_cost_per_mtok": 0,
+      "input_credits_per_mtok": 16.9,
+      "output_credits_per_mtok": 0,
+      "context_window": 8191,
+      "input_modalities": [
+        "text"
+      ],
+      "output_modalities": [
+        "embedding"
+      ],
+      "supports_streaming": false
+    },
+    {
+      "slug": "gpt-image-1",
+      "name": "GPT Image 1",
+      "provider": "OpenAI",
+      "provider_model_id": "gpt-image-1",
+      "display_order": 210,
+      "api_kind": "image",
+      "pricing_unit": "token",
+      "category": "Image",
+      "input_cost_per_mtok": 5,
+      "output_cost_per_mtok": 40,
+      "input_credits_per_mtok": 650,
+      "output_credits_per_mtok": 5200,
+      "input_modalities": [
+        "text"
+      ],
+      "output_modalities": [
+        "image"
+      ],
+      "supports_streaming": false
+    },
+    {
+      "slug": "gpt-image-1-mini",
+      "name": "GPT Image 1 Mini",
+      "provider": "OpenAI",
+      "provider_model_id": "gpt-image-1-mini",
+      "display_order": 211,
+      "api_kind": "image",
+      "pricing_unit": "token",
+      "category": "Image",
+      "input_cost_per_mtok": 2,
+      "output_cost_per_mtok": 8,
+      "input_credits_per_mtok": 260,
+      "output_credits_per_mtok": 1040,
+      "input_modalities": [
+        "text"
+      ],
+      "output_modalities": [
+        "image"
+      ],
+      "supports_streaming": false
+    },
+    {
+      "slug": "tts-1",
+      "name": "TTS 1",
+      "provider": "OpenAI",
+      "provider_model_id": "tts-1",
+      "display_order": 220,
+      "api_kind": "speech",
+      "pricing_unit": "character",
+      "category": "Speech",
+      "input_cost_per_mtok": 15,
+      "output_cost_per_mtok": 0,
+      "input_credits_per_mtok": 1950,
+      "output_credits_per_mtok": 0,
+      "input_modalities": [
+        "text"
+      ],
+      "output_modalities": [
+        "audio"
+      ],
+      "supports_streaming": false
+    },
+    {
+      "slug": "tts-1-hd",
+      "name": "TTS 1 HD",
+      "provider": "OpenAI",
+      "provider_model_id": "tts-1-hd",
+      "display_order": 221,
+      "api_kind": "speech",
+      "pricing_unit": "character",
+      "category": "Speech",
+      "input_cost_per_mtok": 30,
+      "output_cost_per_mtok": 0,
+      "input_credits_per_mtok": 3900,
+      "output_credits_per_mtok": 0,
+      "input_modalities": [
+        "text"
+      ],
+      "output_modalities": [
+        "audio"
+      ],
+      "supports_streaming": false
+    },
+    {
+      "slug": "whisper-1",
+      "name": "Whisper",
+      "provider": "OpenAI",
+      "provider_model_id": "whisper-1",
+      "display_order": 230,
+      "api_kind": "transcription",
+      "pricing_unit": "second",
+      "category": "Transcription",
+      "unit_cost_usd": 0.0001,
+      "unit_credits": 0.013,
+      "input_modalities": [
+        "audio"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "supports_streaming": false
+    },
+    {
+      "slug": "sora-2",
+      "name": "Sora 2",
+      "provider": "OpenAI",
+      "provider_model_id": "sora-2",
+      "display_order": 240,
+      "api_kind": "video",
+      "pricing_unit": "second",
+      "category": "Video",
+      "unit_cost_usd": 0.1,
+      "unit_credits": 13,
+      "input_modalities": [
+        "text"
+      ],
+      "output_modalities": [
+        "video"
+      ],
+      "supports_streaming": false
+    },
+    {
+      "slug": "sora-2-pro",
+      "name": "Sora 2 Pro",
+      "provider": "OpenAI",
+      "provider_model_id": "sora-2-pro",
+      "display_order": 241,
+      "api_kind": "video",
+      "pricing_unit": "second",
+      "category": "Video",
+      "unit_cost_usd": 0.3,
+      "unit_credits": 39,
+      "input_modalities": [
+        "text"
+      ],
+      "output_modalities": [
+        "video"
+      ],
+      "supports_streaming": false
+    }
+  ]
+}

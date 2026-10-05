@@ -9,7 +9,7 @@ async function seed(userId) {
     read_aloud: false,
     ai_voice_model: null,
     system_prompt: null,
-    temperature: 0.7,
+    temperature: null,
     token_threshold_80: true,
     token_threshold_90: true,
     token_threshold_100: true,

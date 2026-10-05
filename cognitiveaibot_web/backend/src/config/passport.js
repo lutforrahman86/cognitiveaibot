@@ -22,7 +22,7 @@ passport.use(
         }
         const user = await User.findOne({
           where: { email: email.trim().toLowerCase() },
-          attributes: ['id', 'email', 'password_hash', 'name', 'type', 'created_at'],
+          attributes: ['id', 'email', 'password_hash', 'name', 'type', 'created_at', 'suspended_at'],
         });
         if (!user) {
           return done(null, false, { message: 'Invalid email or password' });
@@ -34,6 +34,9 @@ passport.use(
         const valid = await bcrypt.compare(password, userPlain.password_hash);
         if (!valid) {
           return done(null, false, { message: 'Invalid email or password' });
+        }
+        if (userPlain.suspended_at) {
+          return done(null, false, { message: 'This account is suspended. Contact support.' });
         }
         return done(null, {
           id: userPlain.id,
