@@ -7,6 +7,8 @@ const plans = require('../billing/plans');
 const { logAdminAction, listAdminActions } = require('../admin/audit');
 const modelAdmin = require('../admin/models');
 const { invalidate } = require('../services/cache');
+const reports = require('../admin/reports');
+const alerts = require('../admin/alerts');
 const { QueryTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { availability, metering, GatewayError, CREDIT_USD_VALUE } = require('../gateway');
@@ -362,7 +364,52 @@ async function getAuditLog(req, res) {
   }
 }
 
+/** GET /api/admin/reports?status=open|reviewed|actioned|dismissed|all */
+async function getReports(req, res) {
+  try {
+    res.json({ reports: await reports.listReports({ status: req.query.status || 'open' }) });
+  } catch (err) {
+    sendError(res, err, 'load reports');
+  }
+}
+
+/** PATCH /api/admin/reports/:id { status } */
+async function updateReport(req, res) {
+  try {
+    const report = await reports.updateReport(req.params.id, req.body?.status, req.user.id);
+    if (!report) return res.status(404).json({ error: 'Report not found' });
+    await logAdminAction(req.user.id, 'report.review', { targetType: 'report', targetId: report.id, details: { status: report.status } });
+    res.json({ report });
+  } catch (err) {
+    sendError(res, err, 'update the report');
+  }
+}
+
+/** GET /api/admin/alerts?all=1 */
+async function getAlerts(req, res) {
+  try {
+    res.json({ alerts: await alerts.listAlerts({ includeResolved: req.query.all === '1' }) });
+  } catch (err) {
+    sendError(res, err, 'load alerts');
+  }
+}
+
+/** POST /api/admin/alerts/:id/resolve */
+async function resolveAlert(req, res) {
+  try {
+    if (!(await alerts.resolveAlert(req.params.id, req.user.id))) return res.status(404).json({ error: 'Alert not found' });
+    await logAdminAction(req.user.id, 'alert.resolve', { targetType: 'alert', targetId: req.params.id });
+    res.json({ resolved: true });
+  } catch (err) {
+    sendError(res, err, 'resolve the alert');
+  }
+}
+
 module.exports = {
+  getReports,
+  updateReport,
+  getAlerts,
+  resolveAlert,
   checkAdmin,
   getDashboard,
   getUsers,

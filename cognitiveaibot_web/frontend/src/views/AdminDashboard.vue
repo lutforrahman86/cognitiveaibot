@@ -18,6 +18,10 @@ import {
   getAdminRequests,
   refundRequest,
   getAuditLog,
+  getReports,
+  reviewReport,
+  getAlerts,
+  resolveAlert,
 } from '../api/admin'
 
 const router = useRouter()
@@ -32,6 +36,8 @@ const menuItems = [
   { id: 'subscriptions', label: 'Subscriptions', icon: '◆' },
   { id: 'usage', label: 'Usage', icon: '⎙' },
   { id: 'requests', label: 'Requests', icon: '⇄' },
+  { id: 'alerts', label: 'Alerts', icon: '!' },
+  { id: 'reports', label: 'Reports', icon: '⚑' },
   { id: 'audit', label: 'Audit log', icon: '☰' },
 ]
 
@@ -59,6 +65,14 @@ const modelFormError = ref('')
 const modelSaving = ref(false)
 const requests = ref([])
 const auditActions = ref([])
+const reportsList = ref([])
+const reportsFilter = ref('open')
+const alertsList = ref([])
+const REPORT_REASON_LABELS = { harmful: 'Harmful', sexual: 'Sexual', hateful: 'Hateful', violent: 'Violent', illegal: 'Illegal', inaccurate: 'Inaccurate', other: 'Other' }
+const ALERT_LABELS = {
+  spend_spike: (d) => `Spent ${d.credits} credits in an hour (threshold ${d.threshold})`,
+  moderation_minors: (d) => `Prompt flagged as sexual content involving minors (${d.source}); blocked`,
+}
 const KIND_LABELS = { chat: 'Chat', embedding: 'Embeddings', image: 'Image', speech: 'Speech', transcription: 'Transcription', video: 'Video' }
 // The plan form: null when closed; `id` is null for a new plan.
 const planForm = ref(null)
@@ -331,6 +345,45 @@ async function handleRefund(r) {
   }
 }
 
+async function loadReports() {
+  try {
+    reportsList.value = (await getReports(reportsFilter.value)).reports || []
+  } catch (err) {
+    error.value = err.message
+  }
+}
+
+async function handleReview(r, status) {
+  try {
+    await reviewReport(r.id, status)
+    await loadReports()
+  } catch (err) {
+    window.alert(err.message)
+  }
+}
+
+async function loadAlerts() {
+  try {
+    alertsList.value = (await getAlerts()).alerts || []
+  } catch (err) {
+    error.value = err.message
+  }
+}
+
+async function handleResolve(a) {
+  try {
+    await resolveAlert(a.id)
+    await loadAlerts()
+  } catch (err) {
+    window.alert(err.message)
+  }
+}
+
+async function handleSuspendFromAlert(a) {
+  await handleSuspend({ id: a.user_id, email: a.email, suspended_at: a.suspended_at })
+  await loadAlerts()
+}
+
 async function loadAudit() {
   try {
     auditActions.value = (await getAuditLog(200)).actions || []
@@ -350,6 +403,8 @@ function describeAction(a) {
       return d.email
     case 'credits.adjust':
       return `${d.credits > 0 ? '+' : ''}${d.credits} credits: ${d.reason}`
+    case 'report.review':
+      return `report marked ${d.status}`
     case 'request.refund':
       return `${d.credits} credits: ${d.reason}`
     default:
@@ -438,6 +493,8 @@ function onTabChange(tab) {
   else if (tab === 'plans') loadPlans()
   else if (tab === 'requests') loadRequests()
   else if (tab === 'audit') loadAudit()
+  else if (tab === 'reports') loadReports()
+  else if (tab === 'alerts') loadAlerts()
 }
 
 onMounted(async () => {
@@ -884,6 +941,72 @@ onUnmounted(() => {
                 </td>
               </tr>
               <tr v-if="!requests.length"><td colspan="8" class="empty">No requests yet</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div v-if="activeTab === 'alerts'" class="admin-section">
+        <h2>Open alerts</h2>
+        <p class="usage-note">Spending spikes and serious moderation hits. Set ADMIN_ALERT_EMAIL to get them by email too.</p>
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>When</th><th>User</th><th>What</th><th></th></tr></thead>
+            <tbody>
+              <tr v-for="a in alertsList" :key="a.id">
+                <td>{{ formatDate(a.created_at) }}</td>
+                <td>
+                  {{ a.email || 'Deleted user' }}
+                  <span v-if="a.suspended_at" class="badge inactive">Suspended</span>
+                </td>
+                <td class="audit-details">{{ ALERT_LABELS[a.kind]?.(a.details) || a.kind }}</td>
+                <td class="row-actions">
+                  <button v-if="a.user_id && !a.suspended_at" class="btn-adjust" @click="handleSuspendFromAlert(a)">Suspend user</button>
+                  <button class="btn-adjust" @click="handleResolve(a)">Resolve</button>
+                </td>
+              </tr>
+              <tr v-if="!alertsList.length"><td colspan="4" class="empty">No open alerts</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div v-if="activeTab === 'reports'" class="admin-section">
+        <div class="models-header">
+          <h2>Reported replies</h2>
+          <select v-model="reportsFilter" class="report-filter" @change="loadReports">
+            <option value="open">Open</option>
+            <option value="reviewed">Reviewed</option>
+            <option value="actioned">Actioned</option>
+            <option value="dismissed">Dismissed</option>
+            <option value="all">All</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>When</th><th>Reported by</th><th>Reason</th><th>Reply</th><th></th></tr></thead>
+            <tbody>
+              <tr v-for="r in reportsList" :key="r.id">
+                <td>{{ formatDate(r.created_at) }}</td>
+                <td>{{ r.reporter_email || 'Deleted user' }}</td>
+                <td>
+                  {{ REPORT_REASON_LABELS[r.reason] || r.reason }}
+                  <div v-if="r.details" class="user-name">“{{ r.details }}”</div>
+                </td>
+                <td class="audit-details">
+                  <div class="user-name">{{ r.model_name }}</div>
+                  {{ r.content_excerpt?.slice(0, 400) }}{{ r.content_excerpt?.length > 400 ? '…' : '' }}
+                </td>
+                <td class="row-actions">
+                  <template v-if="r.status === 'open'">
+                    <button class="btn-adjust" @click="handleReview(r, 'actioned')">Actioned</button>
+                    <button class="btn-adjust" @click="handleReview(r, 'reviewed')">Reviewed</button>
+                    <button class="btn-adjust" @click="handleReview(r, 'dismissed')">Dismiss</button>
+                  </template>
+                  <span v-else class="model-unavailable">{{ r.status }}</span>
+                </td>
+              </tr>
+              <tr v-if="!reportsList.length"><td colspan="5" class="empty">No reports</td></tr>
             </tbody>
           </table>
         </div>
@@ -1669,6 +1792,16 @@ onUnmounted(() => {
   gap: 0.75rem;
   align-items: center;
   margin-top: 1rem;
+}
+
+.report-filter {
+  padding: 0.4rem 0.6rem;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #c9d1d9;
+  font: inherit;
+  font-size: 0.875rem;
 }
 
 .row-actions {

@@ -72,7 +72,10 @@ function signInWithGithub() {
           <input id="email" v-model="form.email" type="email" placeholder="you@example.com" required autocomplete="email" />
         </div>
         <div class="field">
-          <label for="password">Password</label>
+          <span class="label-row">
+            <label for="password">Password</label>
+            <router-link to="/forgot-password" class="forgot-link">Forgot password?</router-link>
+          </span>
           <input id="password" v-model="form.password" type="password" placeholder="••••••••" required autocomplete="current-password" />
         </div>
         <button type="submit" class="btn btn-primary btn-block" :disabled="loading">
@@ -201,6 +204,10 @@ function signInWithGithub() {
 .signin-footer a:hover {
   text-decoration: underline;
 }
+
+.label-row { display: flex; justify-content: space-between; align-items: baseline; }
+.forgot-link { color: #a5b4fc; font-size: 0.8125rem; text-decoration: none; }
+.forgot-link:hover { text-decoration: underline; }
 
 .error-msg {
   padding: 0.75rem;

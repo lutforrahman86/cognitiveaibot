@@ -365,14 +365,3 @@ test('the admin usage view shows provider cost against what was charged', async 
   assert.ok('charged_credits' in requests[0] && !('charged_micros' in requests[0]));
 });
 
-test('trial credits are granted once, when an account is first used', async () => {
-  process.env.SIGNUP_TRIAL_CREDITS = '5';
-  const pat = await registerUser(server.baseUrl, 'Pat');
-
-  const first = (await api(server.baseUrl, 'GET', '/api/credits', { token: pat.token })).body;
-  const second = (await api(server.baseUrl, 'GET', '/api/credits', { token: pat.token })).body;
-
-  assert.equal(first.balance, 5);
-  assert.equal(second.balance, 5);
-  assert.deepEqual(second.transactions.map((t) => [t.type, t.amount, t.reason]), [['grant', 5, 'Trial credits']]);
-});

@@ -235,12 +235,12 @@ onUnmounted(() => {
           <span>CognitiveAI Bot</span>
         </div>
         <div class="footer-links">
-          <a href="#">Documentation</a>
-          <a href="#">API Reference</a>
-          <a href="#">GitHub</a>
-          <a href="#">Contact</a>
+          <router-link to="/docs/api">API docs</router-link>
+          <router-link to="/terms">Terms</router-link>
+          <router-link to="/privacy">Privacy</router-link>
+          <router-link to="/acceptable-use">Acceptable use</router-link>
         </div>
-        <p class="footer-copy">© 2025 CognitiveAI Bot. Built with Vue.js</p>
+        <p class="footer-copy">© 2026 CognitiveAI Bot</p>
       </div>
     </footer>
   </div>

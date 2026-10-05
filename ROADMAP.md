@@ -48,6 +48,24 @@ Google key is rejected and there's no Anthropic key yet. Credit prices are place
 US$0.01, priced at cost) until Decision 4. Billing (buying credits) and the developer API
 are next.
 
+### Done on 2026-10-05: launch readiness (B18, E4, E5, F6, F7)
+
+- **Accounts:** password reset, email confirmation (trial credits now come on
+  confirming), password change, data export and account deletion, on web and the API.
+  Google/GitHub sign-in no longer links into an unconfirmed account that has a password
+  (account pre-hijacking).
+- **Abuse controls:** sign-up and reset limits per IP, message limits in the app,
+  spending-spike alerts with one-click suspend.
+- **Moderation:** prompts are checked with OpenAI's moderation model, more strictly for
+  images and video. Users can report replies; admins review them.
+- **Deployment:** Docker images and a Compose stack for staging, built and started in CI;
+  backup, restore and backup-check scripts (a real backup was restored and checked);
+  `make-admin` for the first admin; `DEPLOYMENT.md`.
+- **Legal:** draft Terms, Privacy (with data retention) and Acceptable Use pages, and a
+  first provider terms review. **Anthropic's terms prohibit reselling Claude without
+  approval**, which affects the developer API; see `docs/provider-terms-review.md`.
+- **Tests: 77 → 90 backend, 8 → 15 web.**
+
 ### Done on 2026-10-05: Phase 3, the developer API (text)
 
 - **API keys.** Created and revoked on the new Developer API page. A key (`sk-cog-…`) is
@@ -381,7 +399,7 @@ Each item shows its status and, where something exists, what is there today.
 - **A13 · P2** ⬜ 0% · Web-search-grounded answers and code execution.
 - **A14 · P2** ⬜ 0% · Prompt-caching passthrough to cut provider cost.
 
-### B. End-user apps (web, mobile, desktop) — 33% (4 done · 8 partial · 7 not started)
+### B. End-user apps (web, mobile, desktop) — 37% (4 done · 9 partial · 6 not started)
 
 **Core**
 - **B1 · P0** ✅ 100% · Real AI chat: streaming, a model picker covering every model,
@@ -437,7 +455,13 @@ Each item shows its status and, where something exists, what is there today.
   temperature (sent only when set, since reasoning models reject one), all applied. A
   partial save no longer resets the other settings. Theme, read-aloud and notification
   settings aren't shown: the web app is dark-only and those features come later (B6, B19).
-- **B18 · P1** ⬜ 0% · Password reset, email verification, account deletion and data export.
+- **B18 · P1** 🟡 75% · Password reset, email verification, account deletion and data export.
+  *Today, on web and the API:* password reset by emailed single-use link (one hour; signs
+  every other session out), email confirmation (trial credits are granted on confirming,
+  and buying or creating API keys needs a confirmed email), password change, a full JSON
+  data export, and account deletion (cancels Stripe, deletes personal data and files,
+  keeps anonymous billing records). Verified end to end in the browser. *Not yet:* the
+  same in the Flutter app (in progress), and real email delivery (set `SMTP_URL`).
 - **B19 · P1** 🟡 10% · Notifications: low balance, job finished, payment failed.
   *Today:* mobile has notification preference toggles only, with nothing behind them.
 
@@ -497,7 +521,7 @@ The developer API is built for text (Phase 3): `/v1` runs on the same gateway as
 - **D5 · P1** ⬜ 0% · Promo codes and trial credits.
 - **D6 · P2** ⬜ 0% · Usage-based overage billing for API customers.
 
-### E. Admin & operations — 41% (2 done · 2 partial · 3 not started)
+### E. Admin & operations — 62% (2 done · 4 partial · 1 not started)
 
 - **E1 · P0** ✅ 100% · Model admin: enable/disable, set price and tier, assign the provider
   route. *Done:* the admin Models tab edits on/off, status, tier, the provider's model id,
@@ -511,15 +535,26 @@ The developer API is built for text (Phase 3): `/v1` runs on the same gateway as
 - **E3 · P1** 🟡 75% · Margin dashboard: our provider cost against credits charged.
   *Today:* the admin Usage tab shows requests, provider cost, charged, margin and unbilled,
   in total and by model and route. *Not yet:* a per-day margin breakdown.
-- **E4 · P1** ⬜ 0% · Abuse controls: spend-spike alerts, card fraud screening, fast key
-  revocation, velocity limits.
-- **E5 · P1** ⬜ 0% · Content moderation on inputs and outputs, plus a way to report content.
+- **E4 · P1** 🟡 75% · Abuse controls: spend-spike alerts, card fraud screening, fast key
+  revocation, velocity limits. *Today:* admin alerts (also emailed) when an account spends
+  more than a set amount in an hour, with a one-click suspend; per-user message limits in
+  the app and per-plan limits on the API; sign-up and password-reset limits per IP
+  address; trial credits only after email confirmation; suspension blocks keys at once.
+  *Not yet:* card fraud screening, which is Stripe Radar's job: review its rules in the
+  Stripe dashboard before launch.
+- **E5 · P1** 🟡 75% · Content moderation on inputs and outputs, plus a way to report
+  content. *Today:* every prompt is checked with OpenAI's moderation model before any
+  model is called (verified against the real service). Image and video prompts follow a
+  stricter policy, and are refused if moderation is down. Sexual content involving minors
+  is always blocked and alerts admins. Users can report any reply; admins review reports
+  in the Reports tab. *Not yet:* our own checks on outputs: the image and video models'
+  built-in safety filters are relied on for now.
 - **E6 · P1** 🟡 10% · Observability: structured logs, per-provider latency and error
   metrics, alerts, error tracking. *Today:* the request log records per-provider latency
   and error codes, but there are no metrics, alerts or structured logs.
 - **E7 · P2** ⬜ 0% · Support ticketing.
 
-### F. Platform foundations — 71% (5 done · 0 partial · 2 not started)
+### F. Platform foundations — 86% (5 done · 2 partial · 0 not started)
 
 - **F1 · P0** ✅ 100% · Replace `sequelize.sync()` with real migrations. *Done:* umzug
   migrations in `src/db/migrations`, applied on startup (or `npm run db:migrate`, with
@@ -548,35 +583,20 @@ The developer API is built for text (Phase 3): `/v1` runs on the same gateway as
   ("Free plan"); hardcoded names say "Not signed in"; Usage says "No usage yet"; History
   starts empty; a new chat starts empty. Widget tests fail if any of those strings return.
   *Not yet checked visually on the phone layout* (simulator access pending).
-- **F6 · P1** ⬜ 0% · CI, a staging environment, database backups. *Today:* the CI workflow
-  written on 2026-10-05 (`.github/workflows/ci.yml`: backend tests on Postgres 18, web
-  build, Flutter analyze and tests) **is no longer in the repo**; it was removed outside
-  this work later that day and never committed. It needs restoring, with a Redis service
-  added for the API tests. There is no staging environment and no backups.
-- **F7 · P1** ⬜ 0% · Legal: Terms, Privacy Policy, Acceptable Use Policy, data-retention
-  policy, and a review of each provider's terms for resale.
-
----
-
-## Development plan
-
-The estimates assume **1–2 backend/full-stack developers and 1 Flutter developer**. They are
-rough planning ranges, not commitments. The mobile track runs in parallel with Phases 2–3.
-
-| Phase | Weeks | What ships | Done when | Status |
-|---|---|---|---|---|
-| **0. Foundations** | 2–3 | Migrations, test harness, Redis, CI, staging. RevenueCat config fixed, fake mobile data removed. Open decisions settled. | Staging deploys from CI with tests passing | 🟡 **70%**. Migrations, tests, CI (restored and running on GitHub), Redis, RevenueCat fix and fake-data removal done. *Left:* staging, backups, and Decision 3 |
-| **1. Gateway MVP: text** | 4–6 | Adapter layer, 3 direct providers, ~30–50 priced text/code models, request logs, credit ledger, streaming. Web chat wired: the placeholder in `Chat.vue` is replaced. | A web user gets a real streamed reply from any listed model, credits drop by the right amount, and admin can see cost against charge | ✅ **100%**. Verified 2026-10-05 with a real reply from OpenAI (`gpt-4o-mini`) in the web chat: streamed, billed exactly from OpenAI's token counts (19 in, 7 out = 705 micro-credits), hold released, provider cost shown to admin. Google needs a working key and Anthropic a key to be checked the same way |
-| **2. Plans & billing** | 3–4 | Plan catalog, Stripe checkout, subscriptions, top-ups and webhooks, real Upgrade page, limits enforced, balance UI | A real card payment leads to credits, usage, then a lower balance. A failed renewal downgrades the account correctly | 🟡 **90%**. Plan catalog with admin editing, Stripe checkout, billing portal and webhooks, the real Upgrade page, 30% markup, and expiring plan credits are done and tested (46 tests). *Left:* the done-when test for real: one Stripe test-mode card payment and a failed renewal, which need your Stripe test key |
-| **3. Public API beta: text** | 3–4 | API keys, `/v1/chat/completions` + `/v1/models`, rate limits, developer dashboard, docs and quickstart | An outside developer buys a plan, creates a key, calls us from the stock OpenAI SDK, and sees the usage | 🟡 **90%**. Keys, `/v1/models` and `/v1/chat/completions`, per-plan rate limits on Redis, the developer dashboard and the docs are done, and the done-when test passes except its first step: the stock OpenAI SDK called `/v1` for real (OpenAI), was billed exactly, and the usage showed on the dashboard. *Left:* buying the API plan through Stripe (waits on Phase 2's Stripe key), and invoices on the dashboard |
-| **4. Mobile connected** *(parallel with 2–3)* | 4–6 | HTTP client and sign-in, in-memory datasources replaced by the API, streaming chat, real history/usage/settings, RevenueCat flowing to the backend | The same account shows the same chats and balance on web and mobile | 🟡 **90%**. The Flutter app signs in, streams chat, stores history on the server, shows balance and usage, reads plans and settings from the server, and buys through RevenueCat; verified end to end on the iOS Simulator and macOS. *Left:* a real App Store purchase (RevenueCat keys), Android |
-| **5. Multimodal** | 6–8 | Images (generation + vision), audio (TTS/STT), embeddings, async video jobs with queue, storage and webhooks. Studios in the apps, the same endpoints on the API, moderation | Every modality works in both the apps and the API, billed in credits | 🟡 **35%**. Images, speech, transcription, embeddings and video jobs work on the API, billed in credits (A1). *Left:* the studios in the apps (B7–B9), file attachments and vision (B5, A6), and moderation (E5) |
-| **6. Desktop app** | 2–4 | Desktop build (see Decision 2), auto-update, native shortcuts and notifications | Signed installers for macOS and Windows | 🟡 **30%**. Flutter desktop (Decision 2): the app runs on macOS with every feature above. *Left:* signed installers for macOS and Windows, auto-update, native shortcuts and notifications |
-| **7. 100+ models & launch hardening** *(overlaps 5–6)* | 4–6 | Catalog sync with admin approval, failover, provider health, margin dashboard, abuse controls, observability, legal pages, load test, status page, store submissions | 100+ models priced and live, and the launch checklist is complete | 🟡 **20%**. Margin dashboard, model admin and audit log, suspension; 54 models listed. *Left:* direct integrations for more providers, failover, provider health, abuse controls, observability, legal pages, load test, status page, store submissions |
-
-**Effort remaining:** about **26.6 of ~34.5 planned weeks** (≈23% done; it was ≈4% this
-morning). The milestones below still count from now.
-
+- **F6 · P1** 🟡 50% · CI, a staging environment, database backups. *Today:* CI runs backend
+  tests on Postgres and Redis, web tests and build, Flutter analyze and tests, and builds
+  and starts the Docker stack. `docker-compose.yml` runs the whole web stack for staging,
+  and backup, restore and backup-check scripts exist; a real backup of the dev database
+  was restored and checked. See `cognitiveaibot_web/DEPLOYMENT.md`. *Not yet:* a host
+  for staging (to be chosen), and backups scheduled and copied off-site there.
+- **F7 · P1** 🟡 50% · Legal: Terms, Privacy Policy, Acceptable Use Policy, data-retention
+  policy, and a review of each provider's terms for resale. *Today:* drafts of all four
+  are live at `/terms`, `/privacy` (including retention) and `/acceptable-use`, linked
+  from sign-up and the site footer, and describe what the service actually does. A first
+  pass of the provider terms review is in `cognitiveaibot_web/docs/provider-terms-review.md`.
+  It found that **Anthropic prohibits reselling without express approval** and that
+  OpenAI's position on `/v1` needs confirming. *Not yet:* placeholders filled in, a
+  lawyer's review, and answers from Anthropic and OpenAI.
 ### Milestones
 
 | Milestone | Target | Status |

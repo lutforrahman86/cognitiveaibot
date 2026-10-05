@@ -18,6 +18,10 @@ const {
   unsuspendUser,
   refundRequest,
   getAuditLog,
+  getReports,
+  updateReport,
+  getAlerts,
+  resolveAlert,
 } = require('../controllers/adminController');
 
 const router = express.Router();
@@ -41,5 +45,9 @@ router.post('/users/:id/suspend', suspendUser);
 router.post('/users/:id/unsuspend', unsuspendUser);
 router.post('/requests/:id/refund', refundRequest);
 router.get('/audit', getAuditLog);
+router.get('/reports', getReports);
+router.patch('/reports/:id', updateReport);
+router.get('/alerts', getAlerts);
+router.post('/alerts/:id/resolve', resolveAlert);
 
 module.exports = router;

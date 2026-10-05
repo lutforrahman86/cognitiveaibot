@@ -218,3 +218,15 @@ export async function getInvoices() {
   if (!res.ok) return []
   return data.invoices
 }
+
+/** Flags a model reply for review. */
+export async function reportMessage(messageId, reason, details) {
+  const res = await fetch(`${API_BASE}/api/reports`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ message_id: messageId, reason, details }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Couldn’t send the report.')
+  return data.report
+}

@@ -3,6 +3,7 @@ const { app } = require('./app');
 const { initDatabase } = require('./db/init');
 const { releaseStaleHolds, expireSubscriptionCredits } = require('./gateway/metering');
 const mediaJobs = require('./gateway/mediaJobs');
+const { checkSpendSpikes } = require('./admin/alerts');
 
 const PORT = process.env.PORT || 3000;
 const LEDGER_SWEEP_MS = 5 * 60 * 1000;
@@ -14,6 +15,7 @@ function sweepLedger() {
   releaseStaleHolds().catch((err) => console.error('Releasing stale credit holds failed:', err.message));
   expireSubscriptionCredits().catch((err) => console.error('Expiring subscription credits failed:', err.message));
   mediaJobs.deleteExpired().catch((err) => console.error('Deleting expired media failed:', err.message));
+  checkSpendSpikes().catch((err) => console.error('Checking spending spikes failed:', err.message));
 }
 
 // Start server

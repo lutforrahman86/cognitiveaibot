@@ -65,22 +65,15 @@ function costUsdMicros(r, inputTokens, outputTokens) {
   return Math.ceil(inputTokens * r.inUsd + outputTokens * r.outUsd);
 }
 
-/** Creates the user's account on first use, with the configured trial credits. */
+/**
+ * Creates the user's credit account on first use, empty. Trial credits are
+ * granted when the user verifies their email (auth/accounts.js).
+ */
 async function ensureAccount(userId, { transaction } = {}) {
-  const inserted = await sequelize.query(
-    `INSERT INTO credit_accounts (user_id) VALUES (:userId)
-     ON CONFLICT (user_id) DO NOTHING RETURNING user_id`,
-    { replacements: { userId }, type: QueryTypes.SELECT, transaction }
-  );
-  const trial = toMicros(process.env.SIGNUP_TRIAL_CREDITS || 0);
-  if (inserted.length && trial > 0) {
-    await sequelize.query(
-      `UPDATE credit_accounts SET balance_micros = :trial WHERE user_id = :userId;
-       INSERT INTO credit_transactions (user_id, type, amount_micros, balance_after_micros, reason)
-       VALUES (:userId, 'grant', :trial, :trial, 'Trial credits')`,
-      { replacements: { userId, trial }, transaction }
-    );
-  }
+  await sequelize.query('INSERT INTO credit_accounts (user_id) VALUES (:userId) ON CONFLICT (user_id) DO NOTHING', {
+    replacements: { userId },
+    transaction,
+  });
 }
 
 async function lockAccount(userId, transaction) {

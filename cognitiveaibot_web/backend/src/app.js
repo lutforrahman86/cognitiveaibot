@@ -14,9 +14,13 @@ const adminRoutes = require('./routes/admin');
 const creditsRoutes = require('./routes/credits');
 const { plansRouter, billingRouter, webhookRouter, revenueCatRouter } = require('./routes/billing');
 const developerRoutes = require('./routes/developer');
+const reportsRoutes = require('./routes/reports');
 const v1Router = require('./api/v1');
 
 const app = express();
+// Behind a load balancer or proxy, set TRUST_PROXY (e.g. 1) so per-IP limits
+// see the client's address rather than the proxy's.
+if (process.env.TRUST_PROXY) app.set('trust proxy', Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY);
 
 // Middleware
 app.use(cors({ origin: process.env.FRONTEND_URL || true, credentials: true }));
@@ -50,6 +54,7 @@ app.use('/api/plans', plansRouter);
 app.use('/api/billing/revenuecat', revenueCatRouter);
 app.use('/api/billing', billingRouter);
 app.use('/api/developer', developerRoutes);
+app.use('/api/reports', reportsRoutes);
 
 app.get('/api', (req, res) => {
   res.json({
@@ -59,6 +64,18 @@ app.get('/api', (req, res) => {
       '/api/health',
       'POST /api/auth/register',
       'POST /api/auth/login',
+      'POST /api/auth/forgot-password',
+      'POST /api/auth/reset-password',
+      'POST /api/auth/verify-email',
+      'POST /api/auth/resend-verification',
+      'POST /api/users/me/password',
+      'GET /api/users/me/export',
+      'DELETE /api/users/me',
+      'POST /api/reports',
+      'GET /api/admin/reports',
+      'PATCH /api/admin/reports/:id',
+      'GET /api/admin/alerts',
+      'POST /api/admin/alerts/:id/resolve',
       'GET /api/auth/me',
       'GET /api/users/me',
       'PATCH /api/users/me',

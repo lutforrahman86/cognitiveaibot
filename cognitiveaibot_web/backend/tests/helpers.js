@@ -36,6 +36,12 @@ for (const key of Object.keys(process.env)) {
 }
 process.env.DATABASE_URL = databaseUrl;
 process.env.JWT_SECRET = 'test-jwt-secret';
+// Every test signs up from 127.0.0.1; the per-IP limits get their own test.
+process.env.SIGNUPS_PER_IP_PER_HOUR = '100000';
+process.env.RESETS_PER_IP_PER_HOUR = '100000';
+process.env.APP_MESSAGES_PER_MINUTE = '100000';
+// Moderation is switched on by the tests that cover it.
+process.env.MODERATION = 'off';
 process.env.NODE_ENV = 'test';
 
 async function ensureDatabaseExists() {
@@ -94,14 +100,22 @@ async function api(baseUrl, method, urlPath, { token, body } = {}) {
 }
 
 let userCounter = 0;
-async function registerUser(baseUrl, name = 'Test User') {
+/**
+ * Signs up a user through the API. Their email counts as confirmed unless
+ * `verified: false` (most features need it confirmed).
+ */
+async function registerUser(baseUrl, name = 'Test User', { verified = true } = {}) {
   userCounter += 1;
   const email = `user${userCounter}-${Date.now()}@example.test`;
   const res = await api(baseUrl, 'POST', '/api/auth/register', {
     body: { email, password: 'password123', name },
   });
   if (res.status !== 201) throw new Error(`register failed: ${res.status} ${res.text}`);
-  return { token: res.body.token, user: res.body.user, email };
+  if (verified) {
+    const { sequelize } = require('../src/config/database');
+    await sequelize.query('UPDATE users SET email_verified_at = now() WHERE id = :id', { replacements: { id: res.body.user.id } });
+  }
+  return { token: res.body.token, user: res.body.user, email, password: 'password123' };
 }
 
 /**

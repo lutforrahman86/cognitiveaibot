@@ -1,0 +1,60 @@
+# The whole web stack on one machine: Postgres, Redis, the API and the web app.
+# Good for staging (or a small production box):
+#   cp backend/.env.example .env.staging   # then fill it in
+#   docker compose --env-file .env.staging up -d --build
+# The web app is served on WEB_PORT (default 8080); put HTTPS in front of it.
+name: cognitiveaibot
+
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cognitiveaibot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-cognitiveaibot}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redisdata:/data
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ${ENV_FILE:-.env.staging}
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cognitiveaibot}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-cognitiveaibot}
+      REDIS_URL: redis://redis:6379
+      MEDIA_STORAGE_DIR: /app/storage/media
+      TRUST_PROXY: '1'
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - media:/app/storage
+      - uploads:/app/uploads
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on: [backend]
+    ports:
+      - '${WEB_PORT:-8080}:80'
+
+volumes:
+  pgdata:
+  redisdata:
+  media:
+  uploads:

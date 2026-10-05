@@ -13,6 +13,10 @@ import AdminDashboard from '../views/AdminDashboard.vue'
 import Developers from '../views/Developers.vue'
 import ApiDocs from '../views/ApiDocs.vue'
 import Usage from '../views/Usage.vue'
+import ForgotPassword from '../views/ForgotPassword.vue'
+import ResetPassword from '../views/ResetPassword.vue'
+import VerifyEmail from '../views/VerifyEmail.vue'
+import Legal from '../views/Legal.vue'
 
 const routes = [
   { path: '/', name: 'Home', component: LandingPage },
@@ -28,6 +32,12 @@ const routes = [
   { path: '/developers', name: 'Developers', component: Developers },
   { path: '/docs/api', name: 'ApiDocs', component: ApiDocs },
   { path: '/usage', name: 'Usage', component: Usage },
+  { path: '/forgot-password', name: 'ForgotPassword', component: ForgotPassword },
+  { path: '/reset-password', name: 'ResetPassword', component: ResetPassword },
+  { path: '/verify-email', name: 'VerifyEmail', component: VerifyEmail },
+  { path: '/terms', name: 'Terms', component: Legal, props: { doc: 'terms' } },
+  { path: '/privacy', name: 'Privacy', component: Legal, props: { doc: 'privacy' } },
+  { path: '/acceptable-use', name: 'AcceptableUse', component: Legal, props: { doc: 'acceptable-use' } },
 ]
 
 const router = createRouter({
