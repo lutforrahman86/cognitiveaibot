@@ -1,0 +1,38 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cognitiveaibot-backend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "cognitiveaibot_web/backend",
+        "run",
+        "dev"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "cognitiveaibot-backend-mock-ai",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "cognitiveaibot_web/backend",
+        "run",
+        "dev:mock-ai"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "cognitiveaibot-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "cognitiveaibot_web/frontend",
+        "run",
+        "dev"
+      ],
+      "port": 5173
+    }
+  ]
+}
