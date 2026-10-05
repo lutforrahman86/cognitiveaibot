@@ -10,9 +10,10 @@ import '../error/exceptions.dart';
 class SessionHolder {
   String? token;
 
-  /// Called with the server's message when a signed-in request gets HTTP 401,
-  /// or 403 `ACCOUNT_SUSPENDED`: the session can't be used any more.
-  void Function(String message)? onUnauthorized;
+  /// Called with the server's message and code when a signed-in request gets
+  /// HTTP 401 (e.g. `SESSION_EXPIRED` after a password change elsewhere), or
+  /// 403 `ACCOUNT_SUSPENDED`: the session can't be used any more.
+  void Function(String message, String? code)? onUnauthorized;
 }
 
 /// JSON-over-HTTP client for the CognitiveAI Bot backend.
@@ -58,7 +59,8 @@ class ApiClient {
   Future<dynamic> patch(String path, {Object? body, bool auth = true}) =>
       _send('PATCH', path, body: body, auth: auth);
 
-  Future<dynamic> delete(String path, {bool auth = true}) => _send('DELETE', path, auth: auth);
+  Future<dynamic> delete(String path, {Object? body, bool auth = true}) =>
+      _send('DELETE', path, body: body, auth: auth);
 
   Future<dynamic> _send(
     String method,
@@ -67,6 +69,7 @@ class ApiClient {
     Object? body,
     required bool auth,
   }) async {
+    final sentToken = _session.token;
     final request = http.Request(method, uri(path, query))
       ..headers.addAll(_headers(auth: auth, json: body != null));
     if (body != null) request.body = jsonEncode(body);
@@ -79,7 +82,7 @@ class ApiClient {
     } on http.ClientException {
       throw const NetworkException(_networkMessage);
     }
-    return decodeResponse(response.statusCode, response.body, auth: auth);
+    return decodeResponse(response.statusCode, response.body, auth: auth, sentToken: sentToken);
   }
 
   /// Opens a streaming POST (Server-Sent Events). Completing [abortTrigger]
@@ -90,6 +93,7 @@ class ApiClient {
     required Object body,
     Future<void>? abortTrigger,
   }) async {
+    final sentToken = _session.token;
     final request = http.AbortableRequest('POST', uri(path), abortTrigger: abortTrigger)
       ..headers.addAll(_headers(auth: true))
       ..headers['Accept'] = 'text/event-stream'
@@ -109,16 +113,23 @@ class ApiClient {
       return response;
     }
     final text = await response.stream.bytesToString();
-    decodeResponse(response.statusCode, text, auth: true, fallback: 'Could not get a reply. Try again.');
+    decodeResponse(response.statusCode, text,
+        auth: true, sentToken: sentToken, fallback: 'Could not get a reply. Try again.');
     // A 2xx answer that isn't a stream is still not a reply.
     throw const ServerException('Could not get a reply. Try again.');
   }
 
   /// Decodes a JSON body, or throws the backend's error for a non-2xx status.
+  ///
+  /// [sentToken] is the token the request went out with. A 401 ends the
+  /// session only while that token is still the current one: an answer to a
+  /// request sent before the token was replaced (e.g. by a password change)
+  /// mustn't sign the new session out.
   dynamic decodeResponse(
     int status,
     String body, {
     required bool auth,
+    String? sentToken,
     String fallback = 'Something went wrong. Try again.',
   }) {
     dynamic json;
@@ -136,9 +147,10 @@ class ApiClient {
     final message = json is Map && json['error'] is String ? json['error'] as String : fallback;
     final code = json is Map && json['code'] is String ? json['code'] as String : null;
     final sessionEnded = status == 401 || (status == 403 && code == 'ACCOUNT_SUSPENDED');
-    if (sessionEnded && auth && _session.token != null) {
-      _session.onUnauthorized?.call(message);
-      throw UnauthorizedException(message);
+    final current = _session.token;
+    if (sessionEnded && auth && current != null && (sentToken == null || sentToken == current)) {
+      _session.onUnauthorized?.call(message, code);
+      throw UnauthorizedException(message, code);
     }
     throw ServerException(message, code, status);
   }

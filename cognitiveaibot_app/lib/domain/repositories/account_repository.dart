@@ -8,4 +8,7 @@ abstract interface class AccountRepository {
   Future<Result<UsageDashboard>> getUsageDashboard();
   Future<Result<UserSettings>> getSettings();
   Future<Result<UserSettings>> updateSettings(UserSettings previous, UserSettings next);
+
+  /// Everything the service holds about the account, as JSON text.
+  Future<Result<String>> exportData();
 }

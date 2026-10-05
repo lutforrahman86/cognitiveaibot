@@ -2,6 +2,7 @@ import '../../core/usecases/usecase.dart';
 import '../entities/ai_model.dart';
 import '../entities/chat_message.dart';
 import '../entities/completion_event.dart';
+import '../entities/content_report.dart';
 import '../entities/conversation.dart';
 
 /// Chats, messages, the model catalog and streamed replies. Everything lives
@@ -29,4 +30,7 @@ abstract interface class ChatRepository {
     bool regenerate = false,
     Future<void>? cancel,
   });
+
+  /// Flags a saved assistant reply for review by an admin.
+  Future<Result<void>> reportMessage({required String messageId, required ReportReason reason, String? details});
 }

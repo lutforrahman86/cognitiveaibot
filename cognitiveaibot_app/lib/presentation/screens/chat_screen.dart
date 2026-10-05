@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/error/error_messages.dart';
 import '../../core/theme/cognitive_aibot_theme.dart';
 import '../../domain/entities/account.dart';
 import '../../domain/entities/ai_model.dart';
@@ -14,7 +15,9 @@ import '../widgets/ai_hub_message_bubble.dart';
 import '../widgets/chat_history_drawer.dart';
 import '../widgets/conversation_actions.dart';
 import '../widgets/model_picker.dart';
+import '../widgets/email_verification_banner.dart';
 import '../widgets/plan_status_text.dart';
+import '../widgets/report_dialog.dart';
 import '../widgets/upgrade.dart';
 
 /// Desktop chat design tokens
@@ -97,6 +100,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     // Nothing was saved: give the text back so it can be sent again.
     if (refused != null && mounted && _input.text.isEmpty) _input.text = text;
   }
+
+  /// An assistant reply the server has saved (it has the server's id), so
+  /// it can be reported.
+  static bool _savedReply(ChatMessage m) =>
+      m.role == MessageRole.assistant && m.id.isNotEmpty && !m.id.startsWith('local-');
 
   void _regenerate() {
     final models = ref.read(modelsProvider).valueOrNull ?? const [];
@@ -204,8 +212,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         .where((m) => m.role != MessageRole.system)
         .toList();
     if (visible.isEmpty) {
+      // Scrolls when the keyboard leaves little room.
       return Center(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -270,6 +279,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           showTimestamp: settings.showTimestamps,
           onRegenerate: canRegenerate && index == lastAssistant
               ? _regenerate
+              : null,
+          onReport: _savedReply(msg) && msg.id != session.streamingMessageId
+              ? () => showReportDialog(context, msg.id)
               : null,
         );
         return desktop
@@ -430,6 +442,7 @@ class _ErrorBanner extends ConsumerWidget {
     final needsPlan =
         session.errorCode == 'INSUFFICIENT_CREDITS' ||
         session.errorCode == 'MODEL_REQUIRES_PLAN';
+    final needsConfirmedEmail = session.errorCode == 'EMAIL_NOT_VERIFIED';
     return Container(
       key: const Key('chat-error'),
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -447,10 +460,16 @@ class _ErrorBanner extends ConsumerWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              session.error!,
+              errorMessageFor(session.errorCode, session.error),
+              key: const Key('chat-error-text'),
               style: const TextStyle(fontSize: 13, color: Colors.white),
             ),
           ),
+          if (needsConfirmedEmail)
+            TextButton(
+              onPressed: () => resendVerificationEmail(context, ref),
+              child: const Text('Resend email'),
+            ),
           if (needsPlan)
             TextButton(
               onPressed: () => openUpgrade(context),

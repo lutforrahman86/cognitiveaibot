@@ -57,6 +57,31 @@ flutter drive ... --target=integration_test/app_test.dart (same defines)
 flutter drive ... --target=integration_test/relaunch_test.dart (same defines)
 ```
 
+Account flows (forgot password, report a reply, change password and back,
+download my data, legal links) on the main account:
+
+```
+flutter drive ... --target=integration_test/account_test.dart (same defines)
+```
+
+Email confirmation and account deletion use a second account,
+`mobile-test-2@example.test` (password in `docs/TESTING.local.md`), which
+the tests sign up and delete again. Pass its email and password as
+`E2E_EMAIL`/`E2E_PASSWORD`:
+
+```
+# signs it up, checks the legal links, the banner and Resend email
+flutter drive ... --target=integration_test/verify_banner_test.dart
+# confirm the email: take the newest token from the backend's console
+# (emails are printed there in development) and post it
+curl -X POST localhost:3100/api/auth/verify-email -H 'Content-Type: application/json' \
+  -d '{"token":"<token from the link>"}'
+# relaunch: no banner; then delete the account through Settings
+flutter drive ... --target=integration_test/delete_account_test.dart
+```
+
+`delete_account_test.dart` refuses to run against `mobile-test@example.test`.
+
 Screenshots taken by the tests are written to `build/e2e_screenshots/`.
 
 ## Notes
@@ -67,3 +92,7 @@ Screenshots taken by the tests are written to `build/e2e_screenshots/`.
   (`~/Library/Containers/com.cognitiveaibot.cognitiveaibot/Data/Library/Application Support/cognitiveaibot/session`).
 - `flutter drive` end-to-end tests click into fields before typing; on macOS
   the test framework's `enterText` alone doesn't focus a field that lost focus.
+- Download my data: macOS saves to the Downloads folder (sandbox entitlement
+  `com.apple.security.files.downloads.read-write`); iOS saves to the app's
+  Documents folder, shown in the Files app under On My iPhone
+  (`UIFileSharingEnabled`, `LSSupportsOpeningDocumentsInPlace`).

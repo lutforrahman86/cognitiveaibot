@@ -7,6 +7,7 @@ import '../../core/utils/platform_info.dart';
 import '../../domain/entities/account.dart';
 import '../providers/account_providers.dart';
 import '../providers/subscription_provider.dart';
+import '../widgets/email_verification_banner.dart';
 import '../widgets/plan_status_text.dart';
 import '../widgets/upgrade.dart';
 
@@ -89,6 +90,8 @@ class _PlansScreenState extends ConsumerState<PlansScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // Buying credits on the web needs a confirmed email.
+                    const EmailVerificationBanner(dismissible: false),
                     const CurrentPlanCard(),
                     const SizedBox(height: 20),
                     if (_desktop) ...[

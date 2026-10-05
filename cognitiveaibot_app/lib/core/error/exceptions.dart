@@ -14,8 +14,8 @@ class ServerException implements Exception {
 
 /// The session is missing, invalid or expired (HTTP 401 on a signed-in call).
 class UnauthorizedException extends ServerException {
-  const UnauthorizedException([String? message])
-      : super(message ?? 'Your session has ended. Sign in again.', 'UNAUTHORIZED', 401);
+  const UnauthorizedException([String? message, String? code])
+      : super(message ?? 'Your session has ended. Sign in again.', code ?? 'UNAUTHORIZED', 401);
 }
 
 /// The server couldn't be reached.

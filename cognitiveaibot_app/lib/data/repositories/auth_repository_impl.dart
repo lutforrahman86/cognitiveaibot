@@ -62,4 +62,37 @@ class AuthRepositoryImpl implements AuthRepository {
     _session.token = null;
     await _store.delete();
   }
+
+  @override
+  Future<Result<AppUser>> currentUser() => Result.guard(_remote.me);
+
+  @override
+  Future<Result<void>> requestPasswordReset(String email) => Result.guard(() => _remote.forgotPassword(email));
+
+  @override
+  Future<Result<bool>> resendVerification() => Result.guard(_remote.resendVerification);
+
+  @override
+  Future<Result<void>> changePassword({required String currentPassword, required String newPassword}) async {
+    final result = await Result.guard(
+      () => _remote.changePassword(currentPassword: currentPassword, newPassword: newPassword),
+    );
+    switch (result) {
+      case Success(:final data):
+        // The server rejects the old token from now on.
+        if (data.isEmpty) return const FailureResult(ServerFailure('Password changed. Sign in again.'));
+        _session.token = data;
+        await _store.write(data);
+        return const Success(null);
+      case FailureResult(:final failure):
+        return FailureResult(failure);
+    }
+  }
+
+  @override
+  Future<Result<void>> deleteAccount(String confirm) async {
+    final result = await Result.guard(() => _remote.deleteAccount(confirm));
+    if (result is Success) await signOut();
+    return result;
+  }
 }

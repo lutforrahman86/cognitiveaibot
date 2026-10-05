@@ -7,6 +7,7 @@ import '../../domain/entities/conversation.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_providers.dart';
 import '../providers/chat_session_provider.dart';
+import '../widgets/email_verification_banner.dart';
 import '../widgets/plan_status_text.dart';
 import 'chat_history_screen.dart';
 import 'chat_screen.dart';
@@ -36,6 +37,25 @@ class MainShell extends ConsumerStatefulWidget {
 
 class _MainShellState extends ConsumerState<MainShell> {
   int _currentIndex = 0;
+  late final AppLifecycleListener _lifecycle;
+
+  @override
+  void initState() {
+    super.initState();
+    // The confirmation link is usually opened in another app: recheck the
+    // account when the app comes back to the front.
+    _lifecycle = AppLifecycleListener(onResume: () {
+      if (ref.read(currentUserProvider)?.emailVerified == false) {
+        ref.read(authControllerProvider.notifier).refreshUser();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
+  }
 
   bool get _desktop => widget.desktop ?? isDesktopPlatform;
 
@@ -79,6 +99,9 @@ class _MainShellState extends ConsumerState<MainShell> {
       ChatSettingsScreen(useDesktopLayout: _desktop),
     ];
 
+    final stack = IndexedStack(index: _currentIndex, children: pages);
+    final showBanner = ref.watch(showVerificationBannerProvider);
+
     if (_desktop) {
       return Scaffold(
         backgroundColor: CognitiveAIBotTheme.background,
@@ -88,7 +111,14 @@ class _MainShellState extends ConsumerState<MainShell> {
               currentIndex: _currentIndex,
               onIndexChanged: (i) => setState(() => _currentIndex = i),
             ),
-            Expanded(child: IndexedStack(index: _currentIndex, children: pages)),
+            Expanded(
+              child: Column(
+                children: [
+                  if (showBanner) const EmailVerificationBanner(),
+                  Expanded(key: const ValueKey('pages'), child: stack),
+                ],
+              ),
+            ),
           ],
         ),
       );
@@ -96,7 +126,21 @@ class _MainShellState extends ConsumerState<MainShell> {
 
     return Scaffold(
       backgroundColor: CognitiveAIBotTheme.background,
-      body: IndexedStack(index: _currentIndex, children: pages),
+      // The column keeps the pages' state when the banner comes or goes.
+      body: Column(
+        children: [
+          if (showBanner) const SafeArea(bottom: false, child: EmailVerificationBanner()),
+          Expanded(
+            key: const ValueKey('pages'),
+            // Below the banner, the pages needn't keep clear of the status bar.
+            // (The Builder reads the body's MediaQuery, which the Scaffold
+            // has already adjusted for the keyboard and the navigation bar.)
+            child: Builder(
+              builder: (context) => MediaQuery.removePadding(context: context, removeTop: showBanner, child: stack),
+            ),
+          ),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         backgroundColor: CognitiveAIBotTheme.surface,
         indicatorColor: CognitiveAIBotTheme.primaryBlue.withValues(alpha: 0.2),
@@ -247,10 +291,12 @@ class _HomeTab extends ConsumerWidget {
       backgroundColor: CognitiveAIBotTheme.background,
       body: SafeArea(
         child: Center(
-          child: Padding(
+          // Scrolls when space is short, e.g. while the keyboard from the
+          // sign-in form is still closing, or under the email banner.
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.smart_toy, size: 80, color: CognitiveAIBotTheme.primaryBlue.withValues(alpha: 0.5)),
                 const SizedBox(height: 24),

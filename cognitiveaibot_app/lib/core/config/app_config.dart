@@ -21,7 +21,14 @@ class AppConfig {
     defaultValue: 'http://localhost:5173',
   );
 
-  static Uri get upgradeUrl => Uri.parse('${_withoutTrailingSlash(frontendUrl)}/upgrade');
+  static Uri get upgradeUrl => _page('/upgrade');
+
+  /// The legal pages on the web app.
+  static Uri get termsUrl => _page('/terms');
+  static Uri get acceptableUseUrl => _page('/acceptable-use');
+  static Uri get privacyUrl => _page('/privacy');
+
+  static Uri _page(String path) => Uri.parse('${_withoutTrailingSlash(frontendUrl)}$path');
 
   static String _withoutTrailingSlash(String url) =>
       url.endsWith('/') ? url.substring(0, url.length - 1) : url;

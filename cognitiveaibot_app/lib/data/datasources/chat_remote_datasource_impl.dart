@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import '../../core/network/api_client.dart';
 import '../../core/network/sse_parser.dart';
 import '../../domain/entities/completion_event.dart';
+import '../../domain/entities/content_report.dart';
 import '../models/ai_model_model.dart';
 import '../models/chat_message_model.dart';
 import '../models/conversation_model.dart';
@@ -55,6 +56,16 @@ class ChatRemoteDataSourceImpl implements ChatRemoteDataSource {
   @override
   Future<void> deleteConversation(String conversationId) async {
     await _api.delete('/api/chats/${Uri.encodeComponent(conversationId)}');
+  }
+
+  @override
+  Future<void> reportMessage({required String messageId, required ReportReason reason, String? details}) async {
+    final text = details?.trim();
+    await _api.post('/api/reports', body: {
+      'message_id': messageId,
+      'reason': reason.name,
+      if (text != null && text.isNotEmpty) 'details': text,
+    });
   }
 
   @override

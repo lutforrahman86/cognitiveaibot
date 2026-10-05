@@ -8,13 +8,14 @@ import '../../core/theme/cognitive_aibot_theme.dart';
 import '../../domain/entities/chat_message.dart';
 
 /// A chat message. Assistant replies render as Markdown with highlighted
-/// code, and offer Copy and (on the latest reply) Regenerate.
+/// code, and offer Copy, Report and (on the latest reply) Regenerate.
 class AIHubMessageBubble extends StatelessWidget {
   const AIHubMessageBubble({
     super.key,
     required this.message,
     this.streaming = false,
     this.onRegenerate,
+    this.onReport,
     this.fontSize = 15,
     this.showTimestamp = true,
   });
@@ -26,6 +27,9 @@ class AIHubMessageBubble extends StatelessWidget {
 
   /// Shown on the latest reply when not streaming.
   final VoidCallback? onRegenerate;
+
+  /// Shown on saved replies (ones with a server id).
+  final VoidCallback? onReport;
   final double fontSize;
   final bool showTimestamp;
 
@@ -196,6 +200,13 @@ class AIHubMessageBubble extends StatelessWidget {
               icon: const Icon(Icons.refresh, size: 18),
               style: style,
               onPressed: onRegenerate,
+            ),
+          if (onReport != null)
+            IconButton(
+              tooltip: 'Report',
+              icon: const Icon(Icons.flag_outlined, size: 18),
+              style: style,
+              onPressed: onReport,
             ),
         ],
       ),

@@ -8,7 +8,15 @@ import 'package:http/http.dart' as http;
 class FakeBackend extends http.BaseClient {
   FakeBackend({this.token = 'valid-token'});
 
-  final String token;
+  /// The session token the server accepts (a password change replaces it).
+  String token;
+
+  /// The account's password, for change-password and delete-account checks.
+  String password = 'right-password';
+  bool emailVerified = true;
+  bool deleted = false;
+  int verificationEmails = 0;
+  List<Map<String, dynamic>> reports = [];
   final requests = <http.BaseRequest>[];
   final bodies = <String>[];
 
@@ -49,7 +57,8 @@ class FakeBackend extends http.BaseClient {
 
   static String event(Map<String, dynamic> e) => 'data: ${jsonEncode(e)}\n\n';
 
-  Map<String, dynamic> get user => {'id': 'u1', 'email': 'tester@example.test', 'name': 'Tester', 'type': 'user'};
+  Map<String, dynamic> get user =>
+      {'id': 'u1', 'email': 'tester@example.test', 'name': 'Tester', 'type': 'user', 'email_verified': emailVerified};
 
   /// Like a real client: completing an abortable request's trigger ends its
   /// response stream with [http.RequestAbortedException].
@@ -91,12 +100,58 @@ class FakeBackend extends http.BaseClient {
           ? json({'token': token, 'user': user})
           : json({'error': 'Invalid email or password'}, 401);
     }
-    if (path == '/api/auth/register') return json({'token': token, 'user': user}, 201);
+    if (path == '/api/auth/register') {
+      final b = jsonDecode(body) as Map;
+      if ((b['password'] as String).length < 8) {
+        return json({'error': 'Password must be at least 8 characters', 'code': 'WEAK_PASSWORD'}, 400);
+      }
+      return json({'token': token, 'user': user}, 201);
+    }
+    if (path == '/api/auth/forgot-password') {
+      return json({'ok': true, 'message': 'If an account uses that email, a reset link is on its way.'});
+    }
 
     if (request.headers['Authorization'] != 'Bearer $token') {
       return json({'error': 'Invalid or expired token'}, 401);
     }
+    if (deleted) return json({'error': 'User not found'}, 401);
     if (path == '/api/auth/me') return json({'user': user});
+    if (path == '/api/auth/resend-verification') {
+      if (!emailVerified) verificationEmails++;
+      return json({'ok': true, 'already_verified': emailVerified});
+    }
+    if (path == '/api/users/me/password' && request.method == 'POST') {
+      final b = jsonDecode(body) as Map;
+      if (b['current_password'] != password) {
+        return json({'error': 'Your current password isn’t right.', 'code': 'WRONG_PASSWORD'}, 403);
+      }
+      if ((b['new_password'] as String).length < 8) {
+        return json({'error': 'Use a password of at least 8 characters.', 'code': 'WEAK_PASSWORD'}, 400);
+      }
+      password = b['new_password'] as String;
+      token = 'token-after-password-change';
+      return json({'ok': true, 'token': token});
+    }
+    if (path == '/api/users/me' && request.method == 'DELETE') {
+      final b = jsonDecode(body) as Map;
+      if (b['confirm'] != password) {
+        return json({'error': 'That password isn’t right.', 'code': 'CONFIRMATION_FAILED'}, 403);
+      }
+      deleted = true;
+      return json({'deleted': true});
+    }
+    if (path == '/api/users/me/export') {
+      return json({'exported_at': '2026-10-05T10:00:00Z', 'profile': user, 'chats': chats});
+    }
+    if (path == '/api/reports' && request.method == 'POST') {
+      final b = jsonDecode(body) as Map<String, dynamic>;
+      const reasons = ['harmful', 'sexual', 'hateful', 'violent', 'illegal', 'inaccurate', 'other'];
+      if (!reasons.contains(b['reason'])) return json({'error': 'Choose a reason.', 'code': 'INVALID_REPORT'}, 400);
+      final known = messages.values.expand((m) => m).any((m) => m['id'] == b['message_id'] && m['role'] == 'assistant');
+      if (!known) return json({'error': 'That reply wasn’t found in your chats.', 'code': 'NOT_FOUND'}, 404);
+      reports.add(b);
+      return json({'report': {'id': 'rep${reports.length}', 'status': 'open'}}, 201);
+    }
     if (path == '/api/billing') {
       return json({'plan': null, 'subscription': null, 'payments_enabled': false, 'credits': {'balance': 12.5, 'held': 0, 'available': 12.5, 'expiring': null}});
     }

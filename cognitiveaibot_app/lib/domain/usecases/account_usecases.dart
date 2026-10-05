@@ -54,3 +54,13 @@ class UpdateSettingsParams {
   final UserSettings previous;
   final UserSettings next;
 }
+
+/// "Download my data": the account's data as JSON text.
+class ExportData implements UseCase<String, NoParams> {
+  ExportData(this._repository);
+
+  final AccountRepository _repository;
+
+  @override
+  Future<Result<String>> call(NoParams params) => _repository.exportData();
+}

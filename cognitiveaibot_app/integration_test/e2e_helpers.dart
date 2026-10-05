@@ -84,10 +84,38 @@ Future<void> fill(WidgetTester tester, Key key, String text) async {
   await tester.pump();
 }
 
+/// Clicks into a field first, as a user would (on macOS, enterText alone
+/// doesn't focus a field), then types [text].
+Future<void> typeInto(WidgetTester tester, Key key, String text) async {
+  await tester.tap(find.byKey(key));
+  await tester.pump();
+  await tester.enterText(find.byKey(key), text);
+  await tester.pump();
+}
+
+/// Taps the Settings row with [key], scrolling to it first.
+Future<void> tapSettingsRow(WidgetTester tester, Key key) async {
+  final row = find.byKey(key);
+  await scrollTo(tester, row, find.byType(Scrollable).last);
+  await tester.tap(row);
+  await pumpFor(tester, const Duration(milliseconds: 600));
+}
+
+/// Signs out from Settings (when a saved session was restored).
+Future<void> signOutFromSettings(WidgetTester tester) async {
+  await openTab(tester, 'Settings');
+  await tapSettingsRow(tester, const Key('settings-log-out'));
+  await tester.tap(find.widgetWithText(TextButton, 'Log Out'));
+  await waitFor(tester, find.byKey(const Key('auth-submit')));
+}
+
 Future<void> signIn(WidgetTester tester) async {
   if (find.byKey(const Key('auth-submit')).evaluate().isEmpty) return;
   await fill(tester, const Key('email-field'), email);
   await fill(tester, const Key('password-field'), password);
+  // With the on-screen keyboard up, the button may be scrolled out of view.
+  await tester.ensureVisible(find.byKey(const Key('auth-submit')));
+  await tester.pump(const Duration(milliseconds: 300));
   await tester.tap(find.byKey(const Key('auth-submit')));
   await waitForGone(tester, find.byKey(const Key('auth-submit')));
 }
