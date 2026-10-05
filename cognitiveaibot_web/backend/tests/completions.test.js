@@ -183,7 +183,7 @@ test('a reply that fails part-way keeps what arrived and reports the error', asy
   assert.deepEqual(saved.map((m) => m.content), ['Tell me something', 'Partial answer']);
 });
 
-test('stopping a reply cancels the provider call and keeps the partial text', async () => {
+test('stopping a reply cancels the provider call, keeps the partial text, and frees the user to send at once', async () => {
   const chat = await newChat();
   mock.reply = { chunks: ['One', ' two', ' three', ' four', ' five'], delayMs: 150 };
 
@@ -193,21 +193,23 @@ test('stopping a reply cancels the provider call and keeps the partial text', as
   });
   assert.equal(stopResult.aborted, true);
 
-  // Give the server a moment to notice the disconnect and save.
+  // Straight after Stop, while the stopped reply may still be saving, the
+  // user can send again.
+  mock.reply = { chunks: ['Ready.'] };
+  const next = await send(chat.id, 'Again');
+  assert.equal(next.status, 200, JSON.stringify(next.body));
+  assert.equal(next.events.at(-1).type, 'done');
+
   let saved = [];
-  for (let i = 0; i < 40 && saved.length < 2; i++) {
+  for (let i = 0; i < 40 && saved.length < 4; i++) {
     await new Promise((r) => setTimeout(r, 50));
     saved = await messagesIn(chat.id);
   }
-  assert.equal(saved.length, 2);
-  assert.match(saved[1].content, /^One two/);
-  assert.ok(!saved[1].content.includes('five'));
+  const partial = saved.find((m) => m.role === 'assistant' && m.content.startsWith('One two'));
+  assert.ok(partial, 'the partial reply was saved');
+  assert.ok(!partial.content.includes('five'));
+  assert.ok(saved.some((m) => m.content === 'Ready.'));
   assert.equal(mock.aborted, 1, 'the upstream request was cancelled, not left running');
-
-  // The user can send again straight away.
-  mock.reply = { chunks: ['Ready.'] };
-  const next = await send(chat.id, 'Again');
-  assert.equal(next.events.at(-1).type, 'done');
 });
 
 test('one reply at a time per user', async () => {
