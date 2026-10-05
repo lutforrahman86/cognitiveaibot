@@ -51,7 +51,8 @@ are next.
 ### Done on 2026-10-05: launch readiness (B18, E4, E5, F6, F7)
 
 - **Accounts:** password reset, email confirmation (trial credits now come on
-  confirming), password change, data export and account deletion, on web and the API.
+  confirming), password change, data export and account deletion, on web, the API and
+  the Flutter app (in-app deletion, as the App Store requires).
   Google/GitHub sign-in no longer links into an unconfirmed account that has a password
   (account pre-hijacking).
 - **Abuse controls:** sign-up and reset limits per IP, message limits in the app,
@@ -399,7 +400,7 @@ Each item shows its status and, where something exists, what is there today.
 - **A13 · P2** ⬜ 0% · Web-search-grounded answers and code execution.
 - **A14 · P2** ⬜ 0% · Prompt-caching passthrough to cut provider cost.
 
-### B. End-user apps (web, mobile, desktop) — 37% (4 done · 9 partial · 6 not started)
+### B. End-user apps (web, mobile, desktop) — 38% (5 done · 8 partial · 6 not started)
 
 **Core**
 - **B1 · P0** ✅ 100% · Real AI chat: streaming, a model picker covering every model,
@@ -455,13 +456,14 @@ Each item shows its status and, where something exists, what is there today.
   temperature (sent only when set, since reasoning models reject one), all applied. A
   partial save no longer resets the other settings. Theme, read-aloud and notification
   settings aren't shown: the web app is dark-only and those features come later (B6, B19).
-- **B18 · P1** 🟡 75% · Password reset, email verification, account deletion and data export.
-  *Today, on web and the API:* password reset by emailed single-use link (one hour; signs
-  every other session out), email confirmation (trial credits are granted on confirming,
-  and buying or creating API keys needs a confirmed email), password change, a full JSON
-  data export, and account deletion (cancels Stripe, deletes personal data and files,
-  keeps anonymous billing records). Verified end to end in the browser. *Not yet:* the
-  same in the Flutter app (in progress), and real email delivery (set `SMTP_URL`).
+- **B18 · P1** ✅ 100% · Password reset, email verification, account deletion and data export.
+  *Done* on web, the API and the Flutter app (iOS and macOS): password reset by emailed
+  single-use link (one hour; signs other sessions out), email confirmation (trial credits
+  are granted on confirming; buying and API keys need it), password change, a JSON data
+  export, and account deletion (in-app too, as the App Store requires: cancels Stripe,
+  deletes personal data and files, keeps anonymous billing records). Verified end to end
+  in the browser, and with `flutter drive` on the iOS Simulator and macOS. Real email
+  delivery needs an SMTP provider (`SMTP_URL`); until then emails go to the server log.
 - **B19 · P1** 🟡 10% · Notifications: low balance, job finished, payment failed.
   *Today:* mobile has notification preference toggles only, with nothing behind them.
 
