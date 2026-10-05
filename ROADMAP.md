@@ -1,6 +1,6 @@
 # CognitiveAI Bot — Feature List & Development Plan
 
-Last updated: 2026-10-05, after Phase 3 (the developer API); Phases 1 done, 2 and 3 at 90%
+Last updated: 2026-10-05, after the P0 push: P0 features at 95%; Phase 1 done, Phases 2–4 at 90%
 Starting point: [PROGRESS.md](PROGRESS.md) (2026-08-09, with corrections).
 
 ## The target
@@ -14,21 +14,26 @@ Starting point: [PROGRESS.md](PROGRESS.md) (2026-08-09, with corrections).
 
 ## Status — 2026-10-05
 
-| Measure | Morning audit | After Phase 0 | After Phase 1 | Phase 2 | Now (Phase 3) |
-|---|---|---|---|---|---|
-| **Whole roadmap** (65 features, equal weight) | 8% | 14% | 20% | 22% | **29%** |
-| **P0 features** (the 26 needed for the first paid launch) | 14% | 28% | 41% | 48% | **66%** |
-| **Planned build effort** (weighted by the phase estimates below) | 4% | 14% | 23% | 28% | **39%**. About **21.2 of ~34.5 weeks** remain |
-| Feature count | 1 done · 20 partial · 44 not started | 3 · 25 · 37 | 4 · 27 · 34 | 4 · 27 · 34 | **7** done · **28** partial · **30** not started |
+| Measure | Morning audit | After Phase 1 | Phase 3 | Now (P0 push) |
+|---|---|---|---|---|
+| **Whole roadmap** (65 features, equal weight) | 8% | 20% | 29% | **41%** |
+| **P0 features** (the 26 needed for the first paid launch) | 14% | 41% | 66% | **95%** |
+| **Planned build effort** (weighted by the phase estimates below) | 4% | 23% | 39% | **63%**. About **12.6 of ~34.5 weeks** remain |
+| Feature count | 1 done · 20 partial · 44 not started | 4 · 27 · 34 | 7 · 28 · 30 | **21** done · **14** partial · **30** not started |
 
-| Area | Morning | After Phase 0 | After Phase 1 | Phase 2 | Now |
-|---|---|---|---|---|---|
-| A. AI Gateway & model platform | 4% | 9% | 26% | 25% | 25% |
-| B. End-user apps | 14% | 16% | 16% | 18% | 18% |
-| C. Developer API product | 0% | 1% | 2% | 2% | 38% |
-| D. Billing & plans | 3% | 6% | 6% | 29% | 29% |
-| E. Admin & operations | 6% | 6% | 21% | 21% | 21% |
-| F. Platform foundations | 14% | 54% | 57% | 57% | 61% |
+| Area | Morning | After Phase 1 | Phase 3 | Now |
+|---|---|---|---|---|
+| A. AI Gateway & model platform | 4% | 26% | 25% | 36% |
+| B. End-user apps | 14% | 16% | 18% | 33% |
+| C. Developer API product | 0% | 2% | 38% | 42% |
+| D. Billing & plans | 3% | 6% | 29% | 42% |
+| E. Admin & operations | 6% | 21% | 21% | 41% |
+| F. Platform foundations | 14% | 57% | 61% | 71% |
+
+**P0 at 95%.** The five P0 items still below 100% wait on things only the owner can
+provide or on platforms not built yet: provider keys for Anthropic, Google and the other
+catalog providers (A3); Android and Windows builds (B3); a Stripe test key (B16, D2); and
+RevenueCat keys and App Store products (B16, D3).
 
 Area A dipped because the second route per model (through OpenRouter) was removed under
 Decision 1, so A10 has no fallback route left.
@@ -327,7 +332,7 @@ images, seconds of audio or video, characters. Everything is normalized to **cre
 **P0** = required for the first paid launch · **P1** = shortly after · **P2** = later
 Each item shows its status and, where something exists, what is there today.
 
-### A. AI Gateway & model platform — 25% (1 done · 5 partial · 8 not started)
+### A. AI Gateway & model platform — 36% (4 done · 2 partial · 8 not started)
 
 - **A1 · P0** ✅ 100% · Provider adapter layer with one interface for chat, images, audio,
   embeddings and video jobs, with SSE streaming for text. *Done:* chat adapters (OpenAI-format
@@ -376,26 +381,28 @@ Each item shows its status and, where something exists, what is there today.
 - **A13 · P2** ⬜ 0% · Web-search-grounded answers and code execution.
 - **A14 · P2** ⬜ 0% · Prompt-caching passthrough to cut provider cost.
 
-### B. End-user apps (web, mobile, desktop) — 18% (0 done · 12 partial · 7 not started)
+### B. End-user apps (web, mobile, desktop) — 33% (4 done · 8 partial · 7 not started)
 
 **Core**
-- **B1 · P0** 🟡 50% · Real AI chat: streaming, a model picker covering every model,
-  stop/regenerate, Markdown and code highlighting, copy.
-  *Today:* on web, replies stream from the gateway, Stop works and keeps the partial
-  reply, and models that can't be called are greyed out. All of this is verified in the
-  browser against the mock provider, and the error path against the real OpenAI API.
-  Mobile replies are still a placeholder (Phase 4). There's no Markdown, copy or
-  regenerate on web, and on mobile those buttons are empty.
-- **B2 · P0** 🟡 50% · Server-side conversation storage.
-  *Today:* done for web via Postgres. Mobile keeps everything in memory, so a restart
-  loses it.
-- **B3 · P0** 🟡 50% · Sign-in on every client.
-  *Today:* backend and web are done (email/password, Google, GitHub). Mobile has no
-  sign-in screen, and desktop doesn't exist yet.
-- **B4 · P0** 🟡 25% · Real balance and usage display.
-  *Today:* the web chat sidebar shows the live credit balance, and `GET /api/credits`
-  returns it with recent movements. There's no usage page for users on web, and mobile
-  shows "No usage yet" until it's connected (Phase 4).
+- **B1 · P0** ✅ 100% · Real AI chat: streaming, a model picker covering every model,
+  stop/regenerate, Markdown and code highlighting, copy. *Done* on web, iOS and macOS:
+  streamed replies, Stop (keeps the partial reply), Regenerate (replaces the reply without
+  repeating the question), Copy for replies and code blocks, Markdown with highlighted
+  code (sanitised on web), and a picker of every chat model with unavailable and
+  plan-locked models marked. Web verified with real OpenAI replies; the app with
+  end-to-end runs on the iOS Simulator and macOS against the mock backend.
+- **B2 · P0** ✅ 100% · Server-side conversation storage. *Done:* web and the Flutter app both
+  use the server: history, server-side search, rename and delete. The app's in-memory
+  datasources are gone; history survives a restart (verified on iOS and macOS).
+- **B3 · P0** 🟡 75% · Sign-in on every client. *Today:* web (email/password, Google,
+  GitHub), and email sign-up, sign-in and sign-out in the Flutter app, verified on iOS and on
+  macOS desktop. The session restores on launch, and a 401 or suspended account returns to
+  sign-in. *Not yet:* Android and Windows builds haven't been built or tested, and
+  Google/GitHub sign-in isn't in the app.
+- **B4 · P0** ✅ 100% · Real balance and usage display. *Done:* web Usage page and the app's
+  usage screen read `GET /api/usage/summary` (credits by day and model, app and API);
+  balance, credits held for a reply in progress and expiring plan credits show on web and
+  in the app.
 - **B5 · P1** 🟡 10% · Real file attachments (PDF, documents, images) sent to vision and
   document models. *Today:* the web file picker code exists but the button is now
   disabled ("coming soon"): it only inserted a text tag, which a real model would answer
@@ -420,11 +427,11 @@ Each item shows its status and, where something exists, what is there today.
 - **B15 · P2** ⬜ 0% · Offline history cache on mobile and desktop.
 
 **Account**
-- **B16 · P0** 🟡 50% · Plans and checkout: Stripe on web and desktop; in-app purchase via
-  RevenueCat on mobile. *Today:* the web Upgrade page lists the server's plans and opens
-  Stripe Checkout and the billing portal, tested against a stand-in Stripe (no real
-  payment yet: no keys). Mobile has RevenueCat purchase/restore/paywall code with no key
-  and still shows its 11 hardcoded plans.
+- **B16 · P0** 🟡 75% · Plans and checkout: Stripe on web and desktop; in-app purchase via
+  RevenueCat on mobile. *Today:* every client shows the server's plans. Web opens Stripe
+  Checkout and the billing portal; macOS opens the web Upgrade page; iOS buys through
+  RevenueCat (`Purchases.logIn` with our user id) and only offers plans linked to an App Store
+  product. *Not yet:* a real payment on any of them (no Stripe or RevenueCat keys yet).
 - **B17 · P0** ✅ 100% · Real Settings page on web. *Done:* text size, Enter-to-send,
   message times, custom instructions (sent to the model at the start of every chat) and
   temperature (sent only when set, since reasoning models reject one), all applied. A
@@ -434,7 +441,7 @@ Each item shows its status and, where something exists, what is there today.
 - **B19 · P1** 🟡 10% · Notifications: low balance, job finished, payment failed.
   *Today:* mobile has notification preference toggles only, with nothing behind them.
 
-### C. Developer API product — 38% (3 done · 2 partial · 7 not started)
+### C. Developer API product — 42% (5 done · 0 partial · 7 not started)
 
 The developer API is built for text (Phase 3): `/v1` runs on the same gateway as the apps.
 
@@ -469,28 +476,28 @@ The developer API is built for text (Phase 3): `/v1` runs on the same gateway as
 - **C11 · P2** ⬜ 0% · Status page and thin official SDK wrappers.
 - **C12 · P2** ⬜ 0% · Enterprise: invoiced billing, an SLA, dedicated rate limits.
 
-### D. Billing & plans — 29% (0 done · 3 partial · 3 not started)
+### D. Billing & plans — 42% (1 done · 2 partial · 3 not started)
 
-- **D1 · P0** 🟡 75% · Admin-configurable plan catalog: price, monthly credits, rate limits,
-  model tiers, whether the plan includes API access. *Today:* a `plans` table with price,
-  credits, interval, kind (subscription or top-up), an API-access flag and on/off sale,
-  edited from the admin Plans tab and served by `GET /api/plans`. *Not yet:* rate limits
-  and model tiers (they arrive with C3), and mobile still hardcodes its own 11 plans.
+- **D1 · P0** ✅ 100% · Admin-configurable plan catalog: price, monthly credits, rate limits,
+  model tiers, whether the plan includes API access. *Done:* admins edit price, credits,
+  interval, top-up vs subscription, API access and limits, model tier and the App Store
+  product in the Plans tab; every client reads `GET /api/plans`. The app's 11 hardcoded
+  plans are deleted.
 - **D2 · P0** 🟡 75% · Stripe subscriptions, top-ups and webhooks that create subscription rows
   and grant credits. *Today:* checkout, billing portal and signed webhooks are built; grants
   are idempotent; renewals, failed renewals and cancellation are handled and tested against
   a stand-in Stripe. *Not yet:* one real test-mode payment, which needs Stripe keys.
-- **D3 · P0** 🟡 25% · RevenueCat webhook for mobile purchases into the same model, and
-  replacing the copied "Flora Diary" entitlement. *Today:* the "Flora Diary" entitlement
-  and key are gone, and keys and the entitlement id now come from build-time settings.
-  The client SDK is wired and `subscriptions` has a `revenuecat_customer_id` column. There
-  is no webhook yet.
+- **D3 · P0** 🟡 75% · RevenueCat webhook for mobile purchases into the same model, and
+  replacing the copied "Flora Diary" entitlement. *Today:* the webhook handles purchases,
+  renewals, top-ups, cancellation, billing issues, expiry and refunds into the same
+  subscriptions and ledger (tested), and the app identifies purchases with our user id.
+  *Not yet:* a real App Store sandbox purchase, which needs the RevenueCat keys and products.
 - **D4 · P1** ⬜ 0% · Receipts and invoices, tax via Stripe Tax, failed-payment retries and
   downgrade, proration.
 - **D5 · P1** ⬜ 0% · Promo codes and trial credits.
 - **D6 · P2** ⬜ 0% · Usage-based overage billing for API customers.
 
-### E. Admin & operations — 21% (0 done · 4 partial · 3 not started)
+### E. Admin & operations — 41% (2 done · 2 partial · 3 not started)
 
 - **E1 · P0** ✅ 100% · Model admin: enable/disable, set price and tier, assign the provider
   route. *Done:* the admin Models tab edits on/off, status, tier, the provider's model id,
@@ -512,7 +519,7 @@ The developer API is built for text (Phase 3): `/v1` runs on the same gateway as
   and error codes, but there are no metrics, alerts or structured logs.
 - **E7 · P2** ⬜ 0% · Support ticketing.
 
-### F. Platform foundations — 61% (3 done · 2 partial · 2 not started)
+### F. Platform foundations — 71% (5 done · 0 partial · 2 not started)
 
 - **F1 · P0** ✅ 100% · Replace `sequelize.sync()` with real migrations. *Done:* umzug
   migrations in `src/db/migrations`, applied on startup (or `npm run db:migrate`, with
@@ -558,14 +565,14 @@ rough planning ranges, not commitments. The mobile track runs in parallel with P
 
 | Phase | Weeks | What ships | Done when | Status |
 |---|---|---|---|---|
-| **0. Foundations** | 2–3 | Migrations, test harness, Redis, CI, staging. RevenueCat config fixed, fake mobile data removed. Open decisions settled. | Staging deploys from CI with tests passing | 🟡 **50%**. Migrations, tests, RevenueCat fix and fake-data removal done; Redis in use for rate limits. The CI workflow file was removed outside this work and needs restoring; staging and the remaining open decisions (2, 3) remain |
+| **0. Foundations** | 2–3 | Migrations, test harness, Redis, CI, staging. RevenueCat config fixed, fake mobile data removed. Open decisions settled. | Staging deploys from CI with tests passing | 🟡 **70%**. Migrations, tests, CI (restored and running on GitHub), Redis, RevenueCat fix and fake-data removal done. *Left:* staging, backups, and Decision 3 |
 | **1. Gateway MVP: text** | 4–6 | Adapter layer, 3 direct providers, ~30–50 priced text/code models, request logs, credit ledger, streaming. Web chat wired: the placeholder in `Chat.vue` is replaced. | A web user gets a real streamed reply from any listed model, credits drop by the right amount, and admin can see cost against charge | ✅ **100%**. Verified 2026-10-05 with a real reply from OpenAI (`gpt-4o-mini`) in the web chat: streamed, billed exactly from OpenAI's token counts (19 in, 7 out = 705 micro-credits), hold released, provider cost shown to admin. Google needs a working key and Anthropic a key to be checked the same way |
 | **2. Plans & billing** | 3–4 | Plan catalog, Stripe checkout, subscriptions, top-ups and webhooks, real Upgrade page, limits enforced, balance UI | A real card payment leads to credits, usage, then a lower balance. A failed renewal downgrades the account correctly | 🟡 **90%**. Plan catalog with admin editing, Stripe checkout, billing portal and webhooks, the real Upgrade page, 30% markup, and expiring plan credits are done and tested (46 tests). *Left:* the done-when test for real: one Stripe test-mode card payment and a failed renewal, which need your Stripe test key |
 | **3. Public API beta: text** | 3–4 | API keys, `/v1/chat/completions` + `/v1/models`, rate limits, developer dashboard, docs and quickstart | An outside developer buys a plan, creates a key, calls us from the stock OpenAI SDK, and sees the usage | 🟡 **90%**. Keys, `/v1/models` and `/v1/chat/completions`, per-plan rate limits on Redis, the developer dashboard and the docs are done, and the done-when test passes except its first step: the stock OpenAI SDK called `/v1` for real (OpenAI), was billed exactly, and the usage showed on the dashboard. *Left:* buying the API plan through Stripe (waits on Phase 2's Stripe key), and invoices on the dashboard |
-| **4. Mobile connected** *(parallel with 2–3)* | 4–6 | HTTP client and sign-in, in-memory datasources replaced by the API, streaming chat, real history/usage/settings, RevenueCat flowing to the backend | The same account shows the same chats and balance on web and mobile | 🟡 **2%**. Screens and architecture are ready (which will speed this up); no connection work done |
-| **5. Multimodal** | 6–8 | Images (generation + vision), audio (TTS/STT), embeddings, async video jobs with queue, storage and webhooks. Studios in the apps, the same endpoints on the API, moderation | Every modality works in both the apps and the API, billed in credits | 🟡 **2%**. Only the file picker and voice recorder code exist, now disabled until real uploads |
-| **6. Desktop app** | 2–4 | Desktop build (see Decision 2), auto-update, native shortcuts and notifications | Signed installers for macOS and Windows | ⬜ **0%**. The Flutter project has empty desktop folders, relevant only if option (b) is chosen |
-| **7. 100+ models & launch hardening** *(overlaps 5–6)* | 4–6 | Catalog sync with admin approval, failover, provider health, margin dashboard, abuse controls, observability, legal pages, load test, status page, store submissions | 100+ models priced and live, and the launch checklist is complete | 🟡 **12%**. Margin dashboard by model and route, two routes per model, partial catalog check; no automatic failover, health checks or abuse controls |
+| **4. Mobile connected** *(parallel with 2–3)* | 4–6 | HTTP client and sign-in, in-memory datasources replaced by the API, streaming chat, real history/usage/settings, RevenueCat flowing to the backend | The same account shows the same chats and balance on web and mobile | 🟡 **90%**. The Flutter app signs in, streams chat, stores history on the server, shows balance and usage, reads plans and settings from the server, and buys through RevenueCat; verified end to end on the iOS Simulator and macOS. *Left:* a real App Store purchase (RevenueCat keys), Android |
+| **5. Multimodal** | 6–8 | Images (generation + vision), audio (TTS/STT), embeddings, async video jobs with queue, storage and webhooks. Studios in the apps, the same endpoints on the API, moderation | Every modality works in both the apps and the API, billed in credits | 🟡 **35%**. Images, speech, transcription, embeddings and video jobs work on the API, billed in credits (A1). *Left:* the studios in the apps (B7–B9), file attachments and vision (B5, A6), and moderation (E5) |
+| **6. Desktop app** | 2–4 | Desktop build (see Decision 2), auto-update, native shortcuts and notifications | Signed installers for macOS and Windows | 🟡 **30%**. Flutter desktop (Decision 2): the app runs on macOS with every feature above. *Left:* signed installers for macOS and Windows, auto-update, native shortcuts and notifications |
+| **7. 100+ models & launch hardening** *(overlaps 5–6)* | 4–6 | Catalog sync with admin approval, failover, provider health, margin dashboard, abuse controls, observability, legal pages, load test, status page, store submissions | 100+ models priced and live, and the launch checklist is complete | 🟡 **20%**. Margin dashboard, model admin and audit log, suspension; 54 models listed. *Left:* direct integrations for more providers, failover, provider health, abuse controls, observability, legal pages, load test, status page, store submissions |
 
 **Effort remaining:** about **26.6 of ~34.5 planned weeks** (≈23% done; it was ≈4% this
 morning). The milestones below still count from now.
@@ -592,13 +599,14 @@ morning). The milestones below still count from now.
 
 ## Decisions needed from you
 
-Decisions 1, 4, 5 and 6 (for the API) are settled; 2 and 3 are still open as of 2026-10-05.
+Decisions 1, 2, 4, 5 and 6 (for the API) are settled; 3 is still open as of 2026-10-05.
 
 1. ~~**Direct vs. aggregator mix.**~~ **Decided 2026-10-05: direct only.** Every model is
    reached with its own provider's key and a direct integration. No aggregator or reseller
    (OpenRouter, fal, Replicate or similar) will be used. The OpenRouter route was
    removed from the gateway the same day, and reaching 100+ models means more direct integrations.
-2. **Desktop technology.**
+2. ~~**Desktop technology.**~~ **Decided 2026-10-05: Flutter desktop** (option b), sharing the mobile app's code. The app already runs on macOS.
+   *Original options:*
    - *(a) Tauri or Electron wrapping the Vue web app.* Fastest, and desktop always matches web.
    - *(b) Flutter desktop.* Shares code with mobile, and the Flutter project already has
      macOS/Windows/Linux folders plus some desktop layouts.
