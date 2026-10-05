@@ -1,48 +1,51 @@
 PODS:
   - Flutter (1.0.0)
+  - flutter_secure_storage_darwin (10.0.0):
+    - Flutter
+    - FlutterMacOS
+  - integration_test (0.0.1):
+    - Flutter
   - purchases_flutter (9.12.3):
     - Flutter
     - PurchasesHybridCommon (= 17.41.1)
-  - purchases_ui_flutter (9.12.3):
-    - Flutter
-    - PurchasesHybridCommonUI (= 17.41.1)
   - PurchasesHybridCommon (17.41.1):
     - RevenueCat (= 5.59.2)
-  - PurchasesHybridCommonUI (17.41.1):
-    - PurchasesHybridCommon (= 17.41.1)
-    - RevenueCatUI (= 5.59.2)
   - RevenueCat (5.59.2)
-  - RevenueCatUI (5.59.2):
-    - RevenueCat (= 5.59.2)
+  - url_launcher_ios (0.0.1):
+    - Flutter
 
 DEPENDENCIES:
   - Flutter (from `Flutter`)
+  - flutter_secure_storage_darwin (from `.symlinks/plugins/flutter_secure_storage_darwin/darwin`)
+  - integration_test (from `.symlinks/plugins/integration_test/ios`)
   - purchases_flutter (from `.symlinks/plugins/purchases_flutter/ios`)
-  - purchases_ui_flutter (from `.symlinks/plugins/purchases_ui_flutter/ios`)
+  - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
 
 SPEC REPOS:
   trunk:
     - PurchasesHybridCommon
-    - PurchasesHybridCommonUI
     - RevenueCat
-    - RevenueCatUI
 
 EXTERNAL SOURCES:
   Flutter:
     :path: Flutter
+  flutter_secure_storage_darwin:
+    :path: ".symlinks/plugins/flutter_secure_storage_darwin/darwin"
+  integration_test:
+    :path: ".symlinks/plugins/integration_test/ios"
   purchases_flutter:
     :path: ".symlinks/plugins/purchases_flutter/ios"
-  purchases_ui_flutter:
-    :path: ".symlinks/plugins/purchases_ui_flutter/ios"
+  url_launcher_ios:
+    :path: ".symlinks/plugins/url_launcher_ios/ios"
 
 SPEC CHECKSUMS:
   Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
+  flutter_secure_storage_darwin: 46e401699982ee74142909676535e0f6a7321e58
+  integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
   purchases_flutter: 64e28fe4f41a5898e50b896b698daeb276101062
-  purchases_ui_flutter: d30ae1f3ac1fd284db4a1e5bdea5c4c61d3cb6f5
   PurchasesHybridCommon: 8eb130ab98f8dab600dea932a2599dee79304bb5
-  PurchasesHybridCommonUI: 59c7bf053558417dcabc06ec6ac072fa8181b865
   RevenueCat: f352b3661288080bd8bf30bbb96e331940e73c88
-  RevenueCatUI: 5f7b3496a7fd7a16a254a6b78de2e221c117d9d2
+  url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
 
 PODFILE CHECKSUM: bd2334c2689fc620c1d7b074fc013065f26bf8b3
 

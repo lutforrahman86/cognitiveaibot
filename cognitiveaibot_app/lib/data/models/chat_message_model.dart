@@ -1,7 +1,7 @@
 import '../../domain/entities/chat_message.dart';
+import 'json_utils.dart';
 
-/// Chat message model - data layer
-/// Extends/adapts the domain entity
+/// Chat message model - data layer (a row of `messages` from the backend).
 class ChatMessageModel extends ChatMessage {
   const ChatMessageModel({
     required super.id,
@@ -9,43 +9,22 @@ class ChatMessageModel extends ChatMessage {
     required super.role,
     required super.timestamp,
     super.modelId,
+    super.modelName,
   });
 
   factory ChatMessageModel.fromJson(Map<String, dynamic> json) {
-    return ChatMessageModel(
-      id: json['id'] as String,
-      content: json['content'] as String,
-      role: MessageRole.values.byName(
-        (json['role'] as String?)?.toLowerCase() ?? 'user',
-      ),
-      timestamp: DateTime.parse(json['timestamp'] as String),
-      modelId: json['modelId'] as String?,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'content': content,
-      'role': role.name,
-      'timestamp': timestamp.toIso8601String(),
-      'modelId': modelId,
+    final role = switch (readString(json['role'])) {
+      'assistant' => MessageRole.assistant,
+      'system' => MessageRole.system,
+      _ => MessageRole.user,
     };
-  }
-
-  ChatMessageModel copyWith({
-    String? id,
-    String? content,
-    MessageRole? role,
-    DateTime? timestamp,
-    String? modelId,
-  }) {
     return ChatMessageModel(
-      id: id ?? this.id,
-      content: content ?? this.content,
-      role: role ?? this.role,
-      timestamp: timestamp ?? this.timestamp,
-      modelId: modelId ?? this.modelId,
+      id: readString(json['id']) ?? '',
+      content: readString(json['content']) ?? '',
+      role: role,
+      timestamp: readDate(json['created_at']) ?? DateTime.now(),
+      modelId: readString(json['model_id']),
+      modelName: readString(json['model_name']),
     );
   }
 }

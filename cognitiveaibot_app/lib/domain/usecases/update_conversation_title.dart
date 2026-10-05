@@ -1,17 +1,18 @@
+import '../../core/error/failures.dart';
 import '../../core/usecases/usecase.dart';
+import '../entities/conversation.dart';
 import '../repositories/chat_repository.dart';
 
-class UpdateConversationTitle implements UseCase<void, UpdateConversationTitleParams> {
+class UpdateConversationTitle implements UseCase<Conversation, UpdateConversationTitleParams> {
   UpdateConversationTitle(this._repository);
 
   final ChatRepository _repository;
 
   @override
-  Future<Result<void>> call(UpdateConversationTitleParams params) {
-    return _repository.updateConversationTitle(
-      params.conversationId,
-      params.title,
-    );
+  Future<Result<Conversation>> call(UpdateConversationTitleParams params) async {
+    final title = params.title.trim();
+    if (title.isEmpty) return const FailureResult(ServerFailure('Enter a title.'));
+    return _repository.updateConversationTitle(params.conversationId, title);
   }
 }
 

@@ -1,0 +1,46 @@
+PODS:
+  - flutter_secure_storage_darwin (10.0.0):
+    - Flutter
+    - FlutterMacOS
+  - FlutterMacOS (1.0.0)
+  - purchases_flutter (9.12.3):
+    - FlutterMacOS
+    - PurchasesHybridCommon (= 17.41.1)
+  - PurchasesHybridCommon (17.41.1):
+    - RevenueCat (= 5.59.2)
+  - RevenueCat (5.59.2)
+  - url_launcher_macos (0.0.1):
+    - FlutterMacOS
+
+DEPENDENCIES:
+  - flutter_secure_storage_darwin (from `Flutter/ephemeral/.symlinks/plugins/flutter_secure_storage_darwin/darwin`)
+  - FlutterMacOS (from `Flutter/ephemeral`)
+  - purchases_flutter (from `Flutter/ephemeral/.symlinks/plugins/purchases_flutter/macos`)
+  - url_launcher_macos (from `Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos`)
+
+SPEC REPOS:
+  trunk:
+    - PurchasesHybridCommon
+    - RevenueCat
+
+EXTERNAL SOURCES:
+  flutter_secure_storage_darwin:
+    :path: Flutter/ephemeral/.symlinks/plugins/flutter_secure_storage_darwin/darwin
+  FlutterMacOS:
+    :path: Flutter/ephemeral
+  purchases_flutter:
+    :path: Flutter/ephemeral/.symlinks/plugins/purchases_flutter/macos
+  url_launcher_macos:
+    :path: Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos
+
+SPEC CHECKSUMS:
+  flutter_secure_storage_darwin: 46e401699982ee74142909676535e0f6a7321e58
+  FlutterMacOS: c232990155153907050900a2e175c7773903ba4e
+  purchases_flutter: 39cf1810439cebe9f051e87bc09bf5358da6ed17
+  PurchasesHybridCommon: 8eb130ab98f8dab600dea932a2599dee79304bb5
+  RevenueCat: f352b3661288080bd8bf30bbb96e331940e73c88
+  url_launcher_macos: f87a979182d112f911de6820aefddaf56ee9fbfd
+
+PODFILE CHECKSUM: 1e95c36afbfd1cb6423ceca4de7a8e1b256fb6ac
+
+COCOAPODS: 1.16.2

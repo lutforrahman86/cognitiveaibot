@@ -9,19 +9,12 @@ class CreateConversation implements UseCase<Conversation, CreateConversationPara
 
   @override
   Future<Result<Conversation>> call(CreateConversationParams params) {
-    return _repository.createConversation(
-      serviceId: params.serviceId,
-      modelId: params.modelId,
-    );
+    return _repository.createConversation(modelId: params.modelId);
   }
 }
 
 class CreateConversationParams {
-  const CreateConversationParams({
-    required this.serviceId,
-    required this.modelId,
-  });
+  const CreateConversationParams({this.modelId});
 
-  final String serviceId;
-  final String modelId;
+  final String? modelId;
 }
