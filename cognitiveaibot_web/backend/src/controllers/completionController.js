@@ -10,10 +10,15 @@ const MAX_MESSAGE_CHARS = 32000;
 const HISTORY_MAX_MESSAGES = 40;
 const HISTORY_MAX_CHARS = 48000;
 
-// Users with a reply currently streaming. One at a time per user, so a single
-// account can't fan out unlimited provider calls. Per-process only: this
-// moves to Redis with real rate limiting (roadmap C3).
-const activeReplies = new Set();
+// Users with a reply currently streaming, mapped to that reply's token. One
+// at a time per user, so a single account can't fan out unlimited provider
+// calls in the app (the developer API is limited per minute instead).
+// Per-process only. A stopped reply frees its slot at once: its provider call
+// is already cancelled, and the user may send again while it is still saving.
+const activeReplies = new Map();
+function releaseReply(userId, token) {
+  if (activeReplies.get(userId) === token) activeReplies.delete(userId);
+}
 
 function buildContext(history, newText) {
   const context = [];
@@ -102,12 +107,16 @@ async function create(req, res) {
       .status(429)
       .json({ error: 'Wait for the current reply to finish.', code: 'REPLY_IN_PROGRESS' });
   }
-  activeReplies.add(userId);
+  const replyToken = Symbol('reply');
+  activeReplies.set(userId, replyToken);
 
   const abort = new AbortController();
   let finished = false;
   res.on('close', () => {
-    if (!finished) abort.abort();
+    if (!finished) {
+      abort.abort();
+      releaseReply(userId, replyToken);
+    }
   });
 
   try {
@@ -276,7 +285,7 @@ async function create(req, res) {
     }
   } finally {
     finished = true;
-    activeReplies.delete(userId);
+    releaseReply(userId, replyToken);
   }
 }
 
