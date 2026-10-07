@@ -4,6 +4,9 @@ const Subscription = require('../models/Subscription');
 const UsageRecord = require('../models/UsageRecord');
 const { checkForNewModels } = require('../services/modelChecker');
 const plans = require('../billing/plans');
+const { logAdminAction, listAdminActions } = require('../admin/audit');
+const modelAdmin = require('../admin/models');
+const { invalidate } = require('../services/cache');
 const { QueryTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
 const { availability, metering, GatewayError, CREDIT_USD_VALUE } = require('../gateway');
@@ -173,7 +176,8 @@ async function getRequests(req, res) {
   try {
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
     const rows = await sequelize.query(
-      `SELECT r.id, r.created_at, r.status, r.error_code, r.route, r.upstream_model,
+      `SELECT r.id, r.created_at, r.status, r.error_code, r.route, r.upstream_model, r.source, r.unit, r.units,
+              EXISTS (SELECT 1 FROM credit_transactions t WHERE t.request_id = r.id AND t.type = 'refund') AS refunded,
               r.input_tokens, r.output_tokens, r.usage_estimated,
               r.held_micros, r.charged_micros, r.unbilled_micros, r.cost_usd_micros,
               r.first_token_ms, r.duration_ms, u.email, m.name AS model_name
@@ -219,6 +223,7 @@ async function adjustCredits(req, res) {
       reason,
       createdBy: req.user.id,
     });
+    await logAdminAction(req.user.id, 'credits.adjust', { targetType: 'user', targetId: user.id, details: { credits, reason } });
     res.json({ user_id: user.id, credits: result.balance });
   } catch (err) {
     if (err instanceof GatewayError) return res.status(err.status).json({ error: err.message, code: err.code });
@@ -248,7 +253,10 @@ async function getPlans(req, res) {
 
 async function createPlan(req, res) {
   try {
-    res.status(201).json({ plan: await plans.createPlan(req.body) });
+    const plan = await plans.createPlan(req.body);
+    await invalidate('plans');
+    await logAdminAction(req.user.id, 'plan.create', { targetType: 'plan', targetId: plan.id, details: req.body });
+    res.status(201).json({ plan });
   } catch (err) {
     if (err instanceof GatewayError) return res.status(err.status).json({ error: err.message, code: err.code });
     console.error('admin create plan:', err);
@@ -260,11 +268,97 @@ async function updatePlan(req, res) {
   try {
     const plan = await plans.updatePlan(req.params.id, req.body);
     if (!plan) return res.status(404).json({ error: 'Plan not found' });
+    await invalidate('plans');
+    await logAdminAction(req.user.id, 'plan.update', { targetType: 'plan', targetId: plan.id, details: req.body });
     res.json({ plan });
   } catch (err) {
     if (err instanceof GatewayError) return res.status(err.status).json({ error: err.message, code: err.code });
     console.error('admin update plan:', err);
     res.status(500).json({ error: 'Failed to update plan' });
+  }
+}
+
+const sendError = (res, err, label) => {
+  if (err instanceof GatewayError) return res.status(err.status).json({ error: err.message, code: err.code });
+  console.error(`admin ${label}:`, err);
+  return res.status(500).json({ error: `Failed to ${label}` });
+};
+
+/** PATCH /api/admin/models/:id — switch on/off, prices, tier, status, capabilities, route. */
+async function updateModel(req, res) {
+  try {
+    const result = await modelAdmin.updateModel(req.params.id, req.body);
+    if (!result) return res.status(404).json({ error: 'Model not found' });
+    if (Object.keys(result.after).length) {
+      await invalidate('models');
+      await logAdminAction(req.user.id, 'model.update', {
+        targetType: 'model',
+        targetId: result.model.id,
+        details: { slug: result.model.slug, before: result.before, after: result.after },
+      });
+    }
+    const { available, reason } = availability(result.model);
+    res.json({ model: { ...result.model, available, unavailable_reason: reason || null }, changed: Object.keys(result.after) });
+  } catch (err) {
+    sendError(res, err, 'update model');
+  }
+}
+
+/** POST /api/admin/users/:id/suspend { reason } and /unsuspend */
+async function setSuspended(req, res, suspend) {
+  try {
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+    if (suspend && !reason) return res.status(400).json({ error: 'Give a reason for the suspension.', code: 'REASON_REQUIRED' });
+    if (suspend && req.params.id === req.user.id) {
+      return res.status(400).json({ error: 'You can’t suspend your own account.', code: 'CANNOT_SUSPEND_SELF' });
+    }
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    await sequelize.transaction(async (transaction) => {
+      await sequelize.query(
+        `UPDATE users SET suspended_at = ${suspend ? 'COALESCE(suspended_at, now())' : 'NULL'},
+                suspended_reason = :reason, updated_at = now() WHERE id = :id`,
+        { replacements: { id: user.id, reason: suspend ? reason : null }, transaction }
+      );
+      await logAdminAction(
+        req.user.id,
+        suspend ? 'user.suspend' : 'user.unsuspend',
+        { targetType: 'user', targetId: user.id, details: { email: user.email, ...(suspend ? { reason } : {}) } },
+        { transaction }
+      );
+    });
+    res.json({ user_id: user.id, suspended: suspend });
+  } catch (err) {
+    sendError(res, err, suspend ? 'suspend user' : 'unsuspend user');
+  }
+}
+const suspendUser = (req, res) => setSuspended(req, res, true);
+const unsuspendUser = (req, res) => setSuspended(req, res, false);
+
+/** POST /api/admin/requests/:id/refund { reason } — returns one call's charge to the user. */
+async function refundRequest(req, res) {
+  try {
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+    if (!reason) return res.status(400).json({ error: 'Give a reason for the refund.', code: 'REASON_REQUIRED' });
+    const result = await metering.refundCharge(req.params.id, { reason, createdBy: req.user.id });
+    await logAdminAction(req.user.id, 'request.refund', {
+      targetType: 'request',
+      targetId: req.params.id,
+      details: { user_id: result.userId, credits: result.refunded, reason },
+    });
+    res.json(result);
+  } catch (err) {
+    sendError(res, err, 'refund request');
+  }
+}
+
+/** GET /api/admin/audit — the newest admin actions. */
+async function getAuditLog(req, res) {
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
+    res.json({ actions: await listAdminActions({ limit, targetType: req.query.target_type, targetId: req.query.target_id }) });
+  } catch (err) {
+    sendError(res, err, 'load the audit log');
   }
 }
 
@@ -281,4 +375,9 @@ module.exports = {
   getPlans,
   createPlan,
   updatePlan,
+  updateModel,
+  suspendUser,
+  unsuspendUser,
+  refundRequest,
+  getAuditLog,
 };

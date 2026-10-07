@@ -36,9 +36,10 @@ const UserSettings = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    // Null: the model's own default (never sent to the provider).
     temperature: {
       type: DataTypes.DECIMAL(3, 2),
-      defaultValue: 0.7,
+      allowNull: true,
     },
     token_threshold_80: {
       type: DataTypes.BOOLEAN,
@@ -69,7 +70,7 @@ const DEFAULTS = {
   read_aloud: false,
   ai_voice_model: null,
   system_prompt: null,
-  temperature: 0.7,
+  temperature: null,
   token_threshold_80: true,
   token_threshold_90: true,
   token_threshold_100: true,
@@ -80,36 +81,63 @@ UserSettings.findByUserId = async function (userId) {
   return s ? s.get({ plain: true }) : { ...DEFAULTS, user_id: userId };
 };
 
-const _baseUpsert = UserSettings.upsert.bind(UserSettings);
-UserSettings.upsert = async function (userId, data) {
-  const {
-    theme,
-    font_size,
-    enter_to_send,
-    show_timestamps,
-    read_aloud,
-    ai_voice_model,
-    system_prompt,
-    temperature,
-    token_threshold_80,
-    token_threshold_90,
-    token_threshold_100,
-  } = data;
-  const [s] = await _baseUpsert({
-    user_id: userId,
-    theme: theme ?? DEFAULTS.theme,
-    font_size: font_size ?? DEFAULTS.font_size,
-    enter_to_send: enter_to_send ?? DEFAULTS.enter_to_send,
-    show_timestamps: show_timestamps ?? DEFAULTS.show_timestamps,
-    read_aloud: read_aloud ?? DEFAULTS.read_aloud,
-    ai_voice_model: ai_voice_model ?? DEFAULTS.ai_voice_model,
-    system_prompt: system_prompt ?? DEFAULTS.system_prompt,
-    temperature: temperature ?? DEFAULTS.temperature,
-    token_threshold_80: token_threshold_80 ?? DEFAULTS.token_threshold_80,
-    token_threshold_90: token_threshold_90 ?? DEFAULTS.token_threshold_90,
-    token_threshold_100: token_threshold_100 ?? DEFAULTS.token_threshold_100,
-  });
-  return s.get({ plain: true });
+const FONT_SIZES = ['small', 'medium', 'large'];
+const THEMES = ['dark', 'light', 'system'];
+const MAX_SYSTEM_PROMPT = 4000;
+
+class SettingsError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'SettingsError';
+    this.status = 400;
+  }
+}
+
+/** Checks one field; returns the value to store or throws SettingsError. */
+function validate(key, value) {
+  const bool = () => {
+    if (typeof value !== 'boolean') throw new SettingsError(`${key} must be true or false.`);
+    return value;
+  };
+  switch (key) {
+    case 'theme':
+      if (!THEMES.includes(value)) throw new SettingsError(`theme must be one of: ${THEMES.join(', ')}.`);
+      return value;
+    case 'font_size':
+      if (!FONT_SIZES.includes(value)) throw new SettingsError(`font_size must be one of: ${FONT_SIZES.join(', ')}.`);
+      return value;
+    case 'system_prompt': {
+      if (value === null || value === '') return null;
+      if (typeof value !== 'string') throw new SettingsError('system_prompt must be text.');
+      if (value.length > MAX_SYSTEM_PROMPT) throw new SettingsError(`Custom instructions are limited to ${MAX_SYSTEM_PROMPT} characters.`);
+      return value.trim() || null;
+    }
+    case 'temperature': {
+      if (value === null || value === '') return null;
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 0 || n > 2) throw new SettingsError('temperature must be from 0 to 2, or empty for the model’s default.');
+      return Math.round(n * 100) / 100;
+    }
+    case 'ai_voice_model':
+      return value === null || value === '' ? null : String(value).slice(0, 100);
+    default:
+      return bool();
+  }
+}
+
+/**
+ * Changes only the settings given; the rest keep their saved values.
+ * Unknown keys are ignored; an invalid value throws SettingsError (400).
+ */
+UserSettings.upsert = async function (userId, data = {}) {
+  const current = await UserSettings.findByUserId(userId);
+  const next = { ...DEFAULTS, ...current, user_id: userId };
+  for (const key of Object.keys(DEFAULTS)) {
+    if (key in data) next[key] = validate(key, data[key]);
+  }
+  const [row] = await UserSettings.findOrCreate({ where: { user_id: userId }, defaults: next });
+  await row.update(next);
+  return row.get({ plain: true });
 };
 
-module.exports = { UserSettings, DEFAULTS };
+module.exports = { UserSettings, DEFAULTS, SettingsError };

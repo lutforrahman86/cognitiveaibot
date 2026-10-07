@@ -12,7 +12,8 @@ const { sequelize } = require('../config/database');
 const { GatewayError } = require('../gateway/errors');
 
 const COLUMNS = `id, slug, name, description, kind, billing_interval, price_cents, currency, credits,
-  includes_api, stripe_price_id, active, sort_order, created_at, updated_at`;
+  includes_api, api_requests_per_minute, api_tokens_per_minute, model_tier, revenuecat_product_id,
+  stripe_price_id, active, sort_order, created_at, updated_at`;
 
 /** What any visitor may see about a plan. */
 function toPublic(plan) {
@@ -27,6 +28,11 @@ function toPublic(plan) {
     currency: plan.currency,
     credits: plan.credits,
     includes_api: plan.includes_api,
+    model_tier: plan.model_tier,
+    revenuecat_product_id: plan.revenuecat_product_id,
+    ...(plan.includes_api
+      ? { api_limits: { requests_per_minute: plan.api_requests_per_minute, tokens_per_minute: plan.api_tokens_per_minute } }
+      : {}),
   };
 }
 
@@ -56,7 +62,8 @@ const invalid = (message) => new GatewayError('INVALID_PLAN', message, { status:
 function validatePlan(body = {}, existing = null) {
   const editable = [
     'slug', 'name', 'description', 'kind', 'interval', 'price_cents', 'currency', 'credits',
-    'includes_api', 'stripe_price_id', 'active', 'sort_order',
+    'includes_api', 'api_requests_per_minute', 'api_tokens_per_minute', 'model_tier', 'revenuecat_product_id',
+    'stripe_price_id', 'active', 'sort_order',
   ];
   const unknown = Object.keys(body).filter((k) => !editable.includes(k));
   if (unknown.length) throw invalid(`Unknown field: ${unknown.join(', ')}.`);
@@ -76,6 +83,10 @@ function validatePlan(body = {}, existing = null) {
     currency: String(p.currency || 'usd').toLowerCase(),
     credits: Number(p.credits),
     includes_api: Boolean(p.includes_api),
+    api_requests_per_minute: Number(p.api_requests_per_minute ?? 60),
+    api_tokens_per_minute: Number(p.api_tokens_per_minute ?? 200000),
+    model_tier: Number(p.model_tier ?? 0),
+    revenuecat_product_id: text(p.revenuecat_product_id) || null,
     stripe_price_id: text(p.stripe_price_id) || null,
     active: p.active === undefined ? true : Boolean(p.active),
     sort_order: Number(p.sort_order || 0),
@@ -96,6 +107,12 @@ function validatePlan(body = {}, existing = null) {
   if (!/^[a-z]{3}$/.test(plan.currency)) throw invalid('The currency must be a 3-letter code, such as "usd".');
   if (!Number.isInteger(plan.credits) || plan.credits <= 0) throw invalid('Credits must be a positive whole number.');
   if (!Number.isInteger(plan.sort_order)) throw invalid('The sort order must be a whole number.');
+  if (!Number.isInteger(plan.model_tier) || plan.model_tier < 0 || plan.model_tier > 9) {
+    throw invalid('The model tier must be a whole number from 0 to 9.');
+  }
+  for (const [field, label] of [['api_requests_per_minute', 'API requests per minute'], ['api_tokens_per_minute', 'API tokens per minute']]) {
+    if (!Number.isInteger(plan[field]) || plan[field] <= 0) throw invalid(`${label} must be a positive whole number.`);
+  }
   return plan;
 }
 
@@ -104,15 +121,17 @@ async function createPlan(body) {
   try {
     const [row] = await sequelize.query(
       `INSERT INTO plans (slug, name, description, kind, billing_interval, price_cents, currency, credits,
-                          includes_api, stripe_price_id, active, sort_order)
+                          includes_api, api_requests_per_minute, api_tokens_per_minute, model_tier, revenuecat_product_id,
+                          stripe_price_id, active, sort_order)
        VALUES (:slug, :name, :description, :kind, :billing_interval, :price_cents, :currency, :credits,
-               :includes_api, :stripe_price_id, :active, :sort_order)
+               :includes_api, :api_requests_per_minute, :api_tokens_per_minute, :model_tier, :revenuecat_product_id,
+               :stripe_price_id, :active, :sort_order)
        RETURNING ${COLUMNS}`,
       { replacements: plan, type: QueryTypes.SELECT }
     );
     return row;
   } catch (err) {
-    if (err.name === 'SequelizeUniqueConstraintError') throw invalid('A plan with that slug already exists.');
+    if (err.name === 'SequelizeUniqueConstraintError') throw invalid('Another plan already uses that slug or App Store product.');
     throw err;
   }
 }
@@ -125,7 +144,9 @@ async function updatePlan(id, body) {
     const [row] = await sequelize.query(
       `UPDATE plans SET slug = :slug, name = :name, description = :description, kind = :kind,
               billing_interval = :billing_interval, price_cents = :price_cents, currency = :currency,
-              credits = :credits, includes_api = :includes_api, stripe_price_id = :stripe_price_id,
+              credits = :credits, includes_api = :includes_api, api_requests_per_minute = :api_requests_per_minute,
+              api_tokens_per_minute = :api_tokens_per_minute, model_tier = :model_tier,
+              revenuecat_product_id = :revenuecat_product_id, stripe_price_id = :stripe_price_id,
               active = :active, sort_order = :sort_order, updated_at = now()
         WHERE id = :id
         RETURNING ${COLUMNS}`,
@@ -133,7 +154,7 @@ async function updatePlan(id, body) {
     );
     return row;
   } catch (err) {
-    if (err.name === 'SequelizeUniqueConstraintError') throw invalid('A plan with that slug already exists.');
+    if (err.name === 'SequelizeUniqueConstraintError') throw invalid('Another plan already uses that slug or App Store product.');
     throw err;
   }
 }

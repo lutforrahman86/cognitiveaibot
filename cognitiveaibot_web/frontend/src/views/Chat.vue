@@ -1,8 +1,9 @@
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { isAuthenticated } from '../api/auth'
-import { getModels, getChats, getChat, createChat, deleteChat, streamCompletion, getProfile, getBilling } from '../api/chat'
+import { getModels, getChats, getChat, createChat, deleteChat, streamCompletion, getProfile, getBilling, getSettings } from '../api/chat'
+import { renderMarkdown } from '../utils/markdown'
 import { checkIsAdmin } from '../api/admin'
 
 const router = useRouter()
@@ -26,8 +27,15 @@ const billing = ref(null)
 const showUserDropdown = ref(false)
 const isAdmin = ref(false)
 const errorText = ref('')
-// Set when a reply was refused for lack of credits, to offer a way to buy more.
-const outOfCredits = ref(false)
+// Set when a reply was refused for lack of credits ('credits') or plan
+// ('plan'), to offer the way out.
+const upgradeHint = ref(null)
+const settings = ref({ enter_to_send: true, show_timestamps: true, font_size: 'medium' })
+const copiedIndex = ref(null)
+// The highest model tier the user's plan unlocks (0 without a plan).
+const userTier = computed(() => billing.value?.plan?.model_tier || 0)
+const lastAssistantIndex = computed(() => messages.value.map((m) => m.role).lastIndexOf('assistant'))
+const hintFor = (code) => (code === 'INSUFFICIENT_CREDITS' ? 'credits' : code === 'MODEL_REQUIRES_PLAN' ? 'plan' : null)
 // Available credits (balance minus anything held for a reply in progress).
 const credits = ref(null)
 const activeReply = ref(null)
@@ -62,7 +70,8 @@ onMounted(async () => {
     router.push('/signin')
     return
   }
-  const [profileRes, billingRes] = await Promise.all([getProfile(), getBilling()])
+  const [profileRes, billingRes, settingsRes] = await Promise.all([getProfile(), getBilling(), getSettings()])
+  if (settingsRes) settings.value = settingsRes
   user.value = profileRes
   billing.value = billingRes
   credits.value = billingRes ? billingRes.credits.available : null
@@ -162,8 +171,14 @@ async function sendMessage() {
     return
   }
 
+  if ((model.tier || 0) > userTier.value) {
+    errorText.value = `${model.name} is available on higher plans.`
+    upgradeHint.value = 'plan'
+    return
+  }
+
   errorText.value = ''
-  outOfCredits.value = false
+  upgradeHint.value = null
   inputText.value = ''
   sending.value = true
 
@@ -214,6 +229,7 @@ async function sendMessage() {
             live().content += event.text
           } else if (event.type === 'done' || event.type === 'error') {
             if (event.credits) credits.value = event.credits.balance
+            if (event.message) live().created_at = event.message.created_at
             if (event.type === 'error') errorText.value = event.error
           }
         },
@@ -221,7 +237,7 @@ async function sendMessage() {
     )
   } catch (err) {
     errorText.value = err.message
-    outOfCredits.value = err.code === 'INSUFFICIENT_CREDITS'
+    upgradeHint.value = hintFor(err.code)
   } finally {
     live().streaming = false
     // Nothing reached the server: put the text back so it can be resent.
@@ -240,6 +256,89 @@ async function sendMessage() {
     sending.value = false
   }
 }
+
+/** Answers the last question again with the selected model, replacing the reply after it. */
+async function regenerate() {
+  const model = selectedModel.value
+  if (!currentChat.value || !model || sending.value) return
+  if (!model.available) {
+    errorText.value = `${model.name} isn’t available yet. Choose another model.`
+    return
+  }
+  errorText.value = ''
+  upgradeHint.value = null
+  sending.value = true
+  const chatId = currentChat.value.id
+  const replyIndex = messages.value.map((m) => m.role).lastIndexOf('user') + 1
+  const previous = messages.value.slice(replyIndex)
+  messages.value.splice(replyIndex, previous.length, { role: 'assistant', content: '', model_name: model.name, streaming: true })
+  const live = () => messages.value[replyIndex]
+  const controller = new AbortController()
+  activeReply.value = controller
+  let started = false
+  try {
+    await streamCompletion(
+      chatId,
+      { regenerate: true, model_id: model.id },
+      {
+        signal: controller.signal,
+        onEvent(event) {
+          if (event.type === 'start') started = true
+          else if (event.type === 'delta') live().content += event.text
+          else if (event.type === 'done' || event.type === 'error') {
+            if (event.credits) credits.value = event.credits.balance
+            if (event.message) live().created_at = event.message.created_at
+            if (event.type === 'error') errorText.value = event.error
+          }
+        },
+      }
+    )
+  } catch (err) {
+    errorText.value = err.message
+    upgradeHint.value = hintFor(err.code)
+  } finally {
+    live().streaming = false
+    // Refused before it started: the old reply is still the saved one.
+    if (!started) messages.value.splice(replyIndex, 1, ...previous)
+    else if (!live().content) messages.value.splice(replyIndex, 1)
+    activeReply.value = null
+    sending.value = false
+  }
+}
+
+async function copyMessage(msg, index) {
+  try {
+    await navigator.clipboard.writeText(msg.content)
+    copiedIndex.value = index
+    setTimeout(() => (copiedIndex.value = null), 1500)
+  } catch {
+    errorText.value = 'Couldn’t copy: your browser blocked the clipboard.'
+  }
+}
+
+/** Copy buttons inside rendered code blocks. */
+async function onReplyClick(e) {
+  const button = e.target.closest('.code-copy')
+  if (!button) return
+  const code = button.closest('.code-block')?.querySelector('pre')?.innerText || ''
+  try {
+    await navigator.clipboard.writeText(code)
+    button.textContent = 'Copied'
+    setTimeout(() => (button.textContent = 'Copy'), 1500)
+  } catch {
+    button.textContent = 'Blocked'
+  }
+}
+
+function onEnter(e) {
+  // Enter sends unless the user turned that off in Settings; Shift+Enter is always a new line.
+  if (settings.value.enter_to_send === false) return
+  e.preventDefault()
+  sendMessage()
+}
+
+const formatTime = (ts) =>
+  ts ? new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''
 
 function stopReply() {
   activeReply.value?.abort()
@@ -355,6 +454,12 @@ function clearRecordedVoice() {
           <button class="sidebar-user-dropdown-item" @click="handleUserMenuClick('/upgrade')">
             Upgrade plan
           </button>
+          <button class="sidebar-user-dropdown-item" @click="handleUserMenuClick('/usage')">
+            Usage
+          </button>
+          <button class="sidebar-user-dropdown-item" @click="handleUserMenuClick('/developers')">
+            Developer API
+          </button>
           <button class="sidebar-user-dropdown-item" @click="handleUserMenuClick('/models')">
             Models
           </button>
@@ -381,19 +486,20 @@ function clearRecordedVoice() {
             v-for="model in models"
             :key="model.id"
             class="model-pill"
-            :class="{ active: selectedModel?.id === model.id, unavailable: !model.available }"
+            :class="{ active: selectedModel?.id === model.id, unavailable: !model.available, locked: (model.tier || 0) > userTier }"
             :style="{ '--pill-color': getProviderColor(model.provider) }"
             :disabled="!model.available || sending"
-            :title="model.available ? model.name : `${model.name}: coming soon`"
+            :title="!model.available ? `${model.name}: coming soon` : (model.tier || 0) > userTier ? `${model.name}: on higher plans` : model.name"
             @click="selectedModel = model"
           >
             <span class="model-pill-provider">{{ model.provider }}</span>
             <span class="model-pill-name">{{ model.name }}</span>
+            <span v-if="model.available && (model.tier || 0) > userTier" class="model-pill-lock">Plan</span>
           </button>
         </div>
       </header>
 
-      <div class="messages-area">
+      <div class="messages-area" :class="`font-${settings.font_size || 'medium'}`">
         <div v-if="!currentChat && messages.length === 0" class="welcome">
           <h2>Start a conversation</h2>
           <p>Choose a model above and type your first message.</p>
@@ -412,7 +518,30 @@ function clearRecordedVoice() {
               {{ msg.model_name }}
             </div>
             <div v-if="msg.streaming && !msg.content" class="message-text message-thinking">Thinking…</div>
+            <div
+              v-else-if="msg.role === 'assistant'"
+              class="message-text markdown"
+              @click="onReplyClick"
+              v-html="renderMarkdown(msg.content)"
+            />
             <div v-else class="message-text">{{ msg.content }}</div>
+            <div v-if="!msg.streaming && (msg.role === 'assistant' || settings.show_timestamps)" class="message-meta">
+              <span v-if="settings.show_timestamps && msg.created_at" class="message-time">{{ formatTime(msg.created_at) }}</span>
+              <template v-if="msg.role === 'assistant' && msg.content">
+                <button type="button" class="message-action" @click="copyMessage(msg, i)">
+                  {{ copiedIndex === i ? 'Copied' : 'Copy' }}
+                </button>
+                <button
+                  v-if="i === lastAssistantIndex && currentChat"
+                  type="button"
+                  class="message-action"
+                  :disabled="sending"
+                  @click="regenerate"
+                >
+                  Regenerate
+                </button>
+              </template>
+            </div>
           </div>
           </div>
         </template>
@@ -489,7 +618,7 @@ function clearRecordedVoice() {
             v-model="inputText"
             placeholder="Message..."
             rows="1"
-            @keydown.enter.exact.prevent="sendMessage"
+            @keydown.enter.exact="onEnter"
           />
           <button v-if="sending" class="send-btn stop-btn" @click="stopReply" type="button">
             Stop
@@ -505,7 +634,9 @@ function clearRecordedVoice() {
         </div>
         <p v-if="errorText" class="input-error" role="alert">
           {{ errorText }}
-          <router-link v-if="outOfCredits" to="/upgrade" class="input-error-link">Buy credits</router-link>
+          <router-link v-if="upgradeHint" to="/upgrade" class="input-error-link">
+            {{ upgradeHint === 'credits' ? 'Buy credits' : 'See plans' }}
+          </router-link>
         </p>
         <p v-else-if="!models.some((m) => m.available)" class="input-error">
           No AI models are connected yet.
@@ -911,6 +1042,108 @@ function clearRecordedVoice() {
   color: #c9d1d9;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Replies render as Markdown (v-html), so their rules use :deep(). */
+.message-text.markdown {
+  white-space: normal;
+}
+.markdown :deep(p) { margin: 0 0 0.75em; }
+.markdown :deep(p:last-child) { margin-bottom: 0; }
+.markdown :deep(h1), .markdown :deep(h2), .markdown :deep(h3), .markdown :deep(h4) {
+  color: #e6edf3;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 1em 0 0.5em;
+}
+.markdown :deep(h1) { font-size: 1.3em; }
+.markdown :deep(h2) { font-size: 1.2em; }
+.markdown :deep(h3), .markdown :deep(h4) { font-size: 1.05em; }
+.markdown :deep(ul), .markdown :deep(ol) { padding-left: 1.4em; margin: 0 0 0.75em; }
+.markdown :deep(li) { margin: 0.2em 0; }
+.markdown :deep(a) { color: #58a6ff; }
+.markdown :deep(blockquote) {
+  margin: 0 0 0.75em;
+  padding-left: 0.875em;
+  border-left: 3px solid #30363d;
+  color: #8b949e;
+}
+.markdown :deep(table) { border-collapse: collapse; margin: 0 0 0.75em; display: block; overflow-x: auto; }
+.markdown :deep(th), .markdown :deep(td) { border: 1px solid #30363d; padding: 0.35em 0.65em; text-align: left; }
+.markdown :deep(:not(pre) > code) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.875em;
+  background: rgba(110, 118, 129, 0.25);
+  padding: 0.1em 0.35em;
+  border-radius: 5px;
+}
+.markdown :deep(.code-block) {
+  margin: 0 0 0.75em;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #0d1117;
+}
+.markdown :deep(.code-head) {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.75rem;
+  color: #8b949e;
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+}
+.markdown :deep(.code-copy) {
+  background: none;
+  border: 1px solid #30363d;
+  border-radius: 5px;
+  color: #c9d1d9;
+  font: inherit;
+  padding: 0.1rem 0.5rem;
+  cursor: pointer;
+}
+.markdown :deep(.code-copy:hover) { border-color: #58a6ff; }
+.markdown :deep(pre) { margin: 0; padding: 0.75rem 0.875rem; overflow-x: auto; }
+.markdown :deep(pre code) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.message-meta {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+  color: #6e7681;
+}
+.message.user .message-meta { justify-content: flex-end; }
+.message-action {
+  background: none;
+  border: none;
+  color: #8b949e;
+  font: inherit;
+  padding: 0.1rem 0.25rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.message-action:hover:not(:disabled) { color: #c9d1d9; background: rgba(110, 118, 129, 0.15); }
+.message-action:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.messages-area.font-small .message-text { font-size: 0.8125rem; }
+.messages-area.font-large .message-text { font-size: 1.0625rem; }
+
+.model-pill-lock {
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  opacity: 0.8;
 }
 
 .file-input-hidden {

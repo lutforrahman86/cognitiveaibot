@@ -6,14 +6,17 @@
  *   - each processed event id is recorded and skipped if seen again;
  *   - each grant carries the payment's id as its ledger `external_ref`, so the
  *     same payment can't grant twice even through two different events;
- *   - a subscription only moves forward in time (see stripe_synced_at), and a
+ *   - a subscription only moves forward in time (see synced_at), and a
  *     canceled one stays canceled.
  * A handler that throws answers 500, and Stripe retries the event later.
  *
  * Events used:
  *   checkout.session.completed / async_payment_succeeded → top-up credits
  *   customer.subscription.created / updated / deleted    → subscription state
- *   invoice.paid (first period or renewal)                → plan credits
+ *   invoice.paid (first period or renewal)                → plan credits, which
+ *                                                           expire when the period ends
+ *   refund.created / refund.updated (succeeded)            → the refunded share of
+ *                                                           that payment's credits is taken back
  * A failed renewal needs no handler of its own: no invoice.paid means no
  * credits, and the status change arrives as customer.subscription.updated.
  */
@@ -23,6 +26,7 @@ const { sequelize } = require('../config/database');
 const { GatewayError } = require('../gateway/errors');
 const metering = require('../gateway/metering');
 const { getPlan } = require('./plans');
+const { requireStripe } = require('./stripe');
 
 const idOf = (v) => (v && typeof v === 'object' ? v.id : v) || null;
 
@@ -74,7 +78,7 @@ async function onSubscriptionChanged(sub, eventCreated, deleted) {
 
   await sequelize.query(
     `INSERT INTO subscriptions (user_id, plan_id, source, stripe_subscription_id, product_id, status,
-                                started_at, expires_at, cancel_at_period_end, stripe_synced_at)
+                                started_at, expires_at, cancel_at_period_end, synced_at)
      VALUES (:userId, :planId, 'stripe', :subId, :productId, :status,
              to_timestamp(:startedAt), to_timestamp(NULLIF(:periodEnd, 0)), :cancelAtPeriodEnd, to_timestamp(:syncedAt))
      ON CONFLICT (stripe_subscription_id) DO UPDATE SET
@@ -83,10 +87,10 @@ async function onSubscriptionChanged(sub, eventCreated, deleted) {
        product_id = COALESCE(EXCLUDED.product_id, subscriptions.product_id),
        expires_at = COALESCE(EXCLUDED.expires_at, subscriptions.expires_at),
        cancel_at_period_end = EXCLUDED.cancel_at_period_end,
-       stripe_synced_at = EXCLUDED.stripe_synced_at,
+       synced_at = EXCLUDED.synced_at,
        updated_at = now()
      WHERE subscriptions.status <> 'canceled'
-       AND (subscriptions.stripe_synced_at IS NULL OR subscriptions.stripe_synced_at <= EXCLUDED.stripe_synced_at)`,
+       AND (subscriptions.synced_at IS NULL OR subscriptions.synced_at <= EXCLUDED.synced_at)`,
     {
       replacements: {
         userId,
@@ -105,6 +109,20 @@ async function onSubscriptionChanged(sub, eventCreated, deleted) {
 
 const CREDITED_BILLING_REASONS = { subscription_create: 'first period', subscription_cycle: 'renewal' };
 
+/**
+ * When the period an invoice pays for ends: its subscription line's period.
+ * (The invoice's own period_end is the previous period's, so it isn't used.)
+ * Falls back to one billing interval from now.
+ */
+function periodEndOf(invoice, plan) {
+  const ends = (invoice.lines?.data || []).map((line) => line.period?.end).filter(Boolean);
+  if (ends.length) return new Date(Math.max(...ends) * 1000);
+  const end = new Date();
+  if (plan?.billing_interval === 'year') end.setFullYear(end.getFullYear() + 1);
+  else end.setMonth(end.getMonth() + 1);
+  return end;
+}
+
 async function onInvoicePaid(invoice) {
   const details = invoice.parent?.subscription_details;
   const subId = idOf(details?.subscription);
@@ -122,10 +140,45 @@ async function onInvoicePaid(invoice) {
   }
   const userId = await resolveUserId(metadata.user_id, invoice.customer);
   const plan = await getPlan(metadata.plan_id);
-  await metering.addCredits(userId, creditsFor(metadata, plan), {
-    type: 'purchase',
+  // Plan credits last for the period paid for; leftovers from the previous
+  // period expire as these arrive.
+  await metering.grantSubscriptionCredits(userId, creditsFor(metadata, plan), {
+    periodEnd: periodEndOf(invoice, plan),
     reason: `${plan ? plan.name : 'Subscription'} (${label})`,
     externalRef: `stripe:invoice:${invoice.id}`,
+  });
+}
+
+/**
+ * A refund takes back the same share of the credits its payment granted
+ * (credits already spent can't be; metering records the shortfall). The
+ * payment is found through Stripe: a top-up's Checkout session, or a
+ * subscription invoice's payment.
+ */
+async function onRefund(refund) {
+  if (refund.status !== 'succeeded') return;
+  const paymentIntent = idOf(refund.payment_intent);
+  if (!paymentIntent) return;
+  const stripe = requireStripe();
+  const [sessions, invoicePayments, intent] = await Promise.all([
+    stripe.checkout.sessions.list({ payment_intent: paymentIntent, limit: 1 }),
+    stripe.invoicePayments.list({ payment: { type: 'payment_intent', payment_intent: paymentIntent }, limit: 1 }),
+    stripe.paymentIntents.retrieve(paymentIntent),
+  ]);
+  const grantRef = sessions.data[0]
+    ? `stripe:checkout:${sessions.data[0].id}`
+    : invoicePayments.data[0]
+      ? `stripe:invoice:${idOf(invoicePayments.data[0].invoice)}`
+      : null;
+  if (!grantRef) {
+    console.warn(`[billing] Refund ${refund.id}: no credit grant found for payment ${paymentIntent}`);
+    return;
+  }
+  const paid = intent.amount_received || intent.amount;
+  await metering.reverseGrant(grantRef, {
+    refundRef: `stripe:refund:${refund.id}`,
+    fraction: paid ? refund.amount / paid : 1,
+    reason: refund.amount >= paid ? 'Payment refunded' : 'Payment partly refunded',
   });
 }
 
@@ -136,6 +189,8 @@ const HANDLERS = {
   'customer.subscription.updated': (e) => onSubscriptionChanged(e.data.object, e.created, false),
   'customer.subscription.deleted': (e) => onSubscriptionChanged(e.data.object, e.created, true),
   'invoice.paid': (e) => onInvoicePaid(e.data.object),
+  'refund.created': (e) => onRefund(e.data.object),
+  'refund.updated': (e) => onRefund(e.data.object),
 };
 
 /** Verifies and processes one webhook delivery. `rawBody` must be the exact bytes Stripe sent. */

@@ -13,6 +13,11 @@ const {
   getPlans,
   createPlan,
   updatePlan,
+  updateModel,
+  suspendUser,
+  unsuspendUser,
+  refundRequest,
+  getAuditLog,
 } = require('../controllers/adminController');
 
 const router = express.Router();
@@ -31,5 +36,10 @@ router.post('/users/:id/credits', adjustCredits);
 router.get('/plans', getPlans);
 router.post('/plans', createPlan);
 router.patch('/plans/:id', updatePlan);
+router.patch('/models/:id', updateModel);
+router.post('/users/:id/suspend', suspendUser);
+router.post('/users/:id/unsuspend', unsuspendUser);
+router.post('/requests/:id/refund', refundRequest);
+router.get('/audit', getAuditLog);
 
 module.exports = router;

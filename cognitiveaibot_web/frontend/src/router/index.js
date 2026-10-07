@@ -10,6 +10,9 @@ import Settings from '../views/Settings.vue'
 import Profile from '../views/Profile.vue'
 import Upgrade from '../views/Upgrade.vue'
 import AdminDashboard from '../views/AdminDashboard.vue'
+import Developers from '../views/Developers.vue'
+import ApiDocs from '../views/ApiDocs.vue'
+import Usage from '../views/Usage.vue'
 
 const routes = [
   { path: '/', name: 'Home', component: LandingPage },
@@ -22,6 +25,9 @@ const routes = [
   { path: '/profile', name: 'Profile', component: Profile },
   { path: '/upgrade', name: 'Upgrade', component: Upgrade },
   { path: '/admin', name: 'Admin', component: AdminDashboard },
+  { path: '/developers', name: 'Developers', component: Developers },
+  { path: '/docs/api', name: 'ApiDocs', component: ApiDocs },
+  { path: '/usage', name: 'Usage', component: Usage },
 ]
 
 const router = createRouter({

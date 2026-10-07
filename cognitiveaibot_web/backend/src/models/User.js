@@ -45,6 +45,8 @@ const User = sequelize.define(
       type: DataTypes.STRING(50),
       defaultValue: 'user',
     },
+    suspended_at: { type: DataTypes.DATE, allowNull: true },
+    suspended_reason: { type: DataTypes.TEXT, allowNull: true },
   },
   {
     tableName: 'users',
@@ -89,7 +91,7 @@ User.findAll = async function (options = {}) {
     ...rest,
     limit,
     offset,
-    attributes: rest.attributes ?? ['id', 'email', 'name', 'type', 'created_at'],
+    attributes: rest.attributes ?? ['id', 'email', 'name', 'type', 'created_at', 'suspended_at', 'suspended_reason'],
     order: rest.order ?? [['created_at', 'DESC']],
     raw: true,
   });

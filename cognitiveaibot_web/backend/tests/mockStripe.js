@@ -8,7 +8,7 @@ const http = require('http');
 
 async function startMockStripe() {
   let counter = 0;
-  const state = { requests: [] };
+  const state = { requests: [], fixtures: { sessions: [], invoicePayments: [], paymentIntents: [], invoices: [] } };
   const server = http.createServer((req, res) => {
     let raw = '';
     req.on('data', (c) => (raw += c));
@@ -29,6 +29,24 @@ async function startMockStripe() {
       }
       if (req.method === 'POST' && req.url === '/v1/billing_portal/sessions') {
         return json(200, { id: `bps_${counter}`, object: 'billing_portal.session', url: 'https://billing.stripe.test/p' });
+      }
+      // Lookups, answered from `state.fixtures` (set by each test).
+      const url = new URL(req.url, 'http://mock');
+      const q = url.searchParams;
+      const list = (data) => json(200, { object: 'list', data, has_more: false });
+      const f = state.fixtures;
+      if (req.method === 'GET' && url.pathname === '/v1/checkout/sessions') {
+        return list(f.sessions.filter((x) => x.payment_intent === q.get('payment_intent')));
+      }
+      if (req.method === 'GET' && url.pathname === '/v1/invoice_payments') {
+        return list(f.invoicePayments.filter((x) => x.payment_intent === q.get('payment[payment_intent]')));
+      }
+      if (req.method === 'GET' && url.pathname.startsWith('/v1/payment_intents/')) {
+        const intent = f.paymentIntents.find((x) => x.id === url.pathname.split('/').pop());
+        return intent ? json(200, intent) : json(404, { error: { type: 'invalid_request_error', message: 'No such payment_intent' } });
+      }
+      if (req.method === 'GET' && url.pathname === '/v1/invoices') {
+        return list(f.invoices.filter((x) => x.customer === q.get('customer')));
       }
       json(404, { error: { type: 'invalid_request_error', message: `No mock for ${req.method} ${req.url}` } });
     });

@@ -50,16 +50,18 @@ after(async () => {
 });
 
 test('the model list says which models can actually be called', () => {
-  assert.equal(models.length, 46, 'the 2026-10 catalog');
+  assert.equal(models.length, 45, 'the 2026-10 catalog');
   assert.equal(bySlug('gpt-4o').available, true);
   assert.equal(bySlug('gpt-5-6-terra').available, true);
-  // Direct-only through Google, and no Google or OpenRouter key in the tests.
+  // No Google or Anthropic key in the tests.
   assert.equal(bySlug('gemini-3-8-flash').available, false);
   assert.equal(bySlug('claude-sonnet-4').available, false);
-  // Only reachable through OpenRouter, which has no key here.
+  // No direct integration for DeepSeek yet.
   assert.equal(bySlug('deepseek-v4-pro').available, false);
   // Retired by its provider: no longer listed at all.
   assert.equal(bySlug('gemini-2-flash'), undefined);
+  // Not served by OpenAI's API, and never through an aggregator: retired.
+  assert.equal(bySlug('gpt-oss-120b'), undefined);
   assert.ok(!('unavailable_reason' in bySlug('claude-sonnet-4')), 'reasons stay admin-only');
 });
 
@@ -80,8 +82,8 @@ test('a message streams a real reply, and both sides are saved with usage', asyn
   const done = events.at(-1);
   assert.equal(done.message.content, 'Paris is the capital.');
   assert.deepEqual(done.usage, { input_tokens: 21, output_tokens: 5, estimated: false });
-  // GPT-4o: 250 credits per 1M input tokens, 1000 per 1M output tokens.
-  assert.equal(done.credits.charged, (21 * 250 + 5 * 1000) / 1e6);
+  // GPT-4o: $2.50 / $10 per 1M tokens, + 30% = 325 / 1300 credits.
+  assert.equal(done.credits.charged, (21 * 325 + 5 * 1300) / 1e6);
 
   // What reached the provider.
   const [upstream] = mock.requests;
@@ -181,7 +183,7 @@ test('a reply that fails part-way keeps what arrived and reports the error', asy
   assert.deepEqual(saved.map((m) => m.content), ['Tell me something', 'Partial answer']);
 });
 
-test('stopping a reply cancels the provider call and keeps the partial text', async () => {
+test('stopping a reply cancels the provider call, keeps the partial text, and frees the user to send at once', async () => {
   const chat = await newChat();
   mock.reply = { chunks: ['One', ' two', ' three', ' four', ' five'], delayMs: 150 };
 
@@ -191,21 +193,23 @@ test('stopping a reply cancels the provider call and keeps the partial text', as
   });
   assert.equal(stopResult.aborted, true);
 
-  // Give the server a moment to notice the disconnect and save.
+  // Straight after Stop, while the stopped reply may still be saving, the
+  // user can send again.
+  mock.reply = { chunks: ['Ready.'] };
+  const next = await send(chat.id, 'Again');
+  assert.equal(next.status, 200, JSON.stringify(next.body));
+  assert.equal(next.events.at(-1).type, 'done');
+
   let saved = [];
-  for (let i = 0; i < 40 && saved.length < 2; i++) {
+  for (let i = 0; i < 40 && saved.length < 4; i++) {
     await new Promise((r) => setTimeout(r, 50));
     saved = await messagesIn(chat.id);
   }
-  assert.equal(saved.length, 2);
-  assert.match(saved[1].content, /^One two/);
-  assert.ok(!saved[1].content.includes('five'));
+  const partial = saved.find((m) => m.role === 'assistant' && m.content.startsWith('One two'));
+  assert.ok(partial, 'the partial reply was saved');
+  assert.ok(!partial.content.includes('five'));
+  assert.ok(saved.some((m) => m.content === 'Ready.'));
   assert.equal(mock.aborted, 1, 'the upstream request was cancelled, not left running');
-
-  // The user can send again straight away.
-  mock.reply = { chunks: ['Ready.'] };
-  const next = await send(chat.id, 'Again');
-  assert.equal(next.events.at(-1).type, 'done');
 });
 
 test('one reply at a time per user', async () => {
@@ -242,3 +246,70 @@ test(
     }
   }
 );
+
+test('settings: a partial update keeps the rest, bad values are refused, and custom instructions lead every reply', async () => {
+  const settings = (body) => api(server.baseUrl, 'PATCH', '/api/settings', { token: bob.token, body });
+  assert.equal((await settings({ system_prompt: 'Answer like a pirate.', font_size: 'large' })).status, 200);
+  const saved = (await settings({ enter_to_send: false })).body.settings;
+  assert.equal(saved.system_prompt, 'Answer like a pirate.', 'unrelated settings are kept');
+  assert.equal(saved.font_size, 'large');
+  assert.equal(saved.enter_to_send, false);
+  assert.equal(saved.temperature, null, 'no temperature unless the user picks one');
+  for (const bad of [{ font_size: 'huge' }, { temperature: 3 }, { enter_to_send: 'yes' }, { system_prompt: 'x'.repeat(4001) }]) {
+    const res = await settings(bad);
+    assert.equal(res.status, 400, JSON.stringify(bad).slice(0, 60));
+    assert.equal(res.body.code, 'INVALID_SETTING');
+  }
+
+  // Without a temperature, none is sent (reasoning models reject one).
+  await send((await newChat(bob.token)).id, 'Ahoy?', 'gpt-4o', { token: bob.token });
+  let upstream = mock.requests.at(-1).body;
+  assert.deepEqual(upstream.messages[0], { role: 'system', content: 'Answer like a pirate.' });
+  assert.ok(!('temperature' in upstream));
+
+  await settings({ temperature: 0.3 });
+  await send((await newChat(bob.token)).id, 'Again', 'gpt-4o', { token: bob.token });
+  upstream = mock.requests.at(-1).body;
+  assert.equal(upstream.temperature, 0.3);
+  // The instructions aren't saved into the chat as a message.
+  const chats = (await api(server.baseUrl, 'GET', '/api/chats', { token: bob.token })).body.chats;
+  const saved2 = (await api(server.baseUrl, 'GET', `/api/chats/${chats[0].id}/messages`, { token: bob.token })).body.messages;
+  assert.ok(saved2.every((m) => m.role !== 'system'));
+  await settings({ system_prompt: null, temperature: null });
+});
+
+test('usage summary shows what calls cost in credits, by day and model', async () => {
+  const usage = (await api(server.baseUrl, 'GET', '/api/usage/summary', { token: alice.token })).body;
+  const [[expected]] = await sequelize.query(
+    "SELECT count(*)::int AS n, COALESCE(sum(charged_micros), 0)::bigint AS micros FROM request_logs WHERE user_id = :id AND status <> 'in_progress'",
+    { replacements: { id: alice.user.id } }
+  );
+  assert.ok(expected.n > 0);
+  assert.equal(usage.totals.requests, expected.n);
+  assert.equal(usage.totals.credits, Number(expected.micros) / 1e6);
+  assert.equal(usage.by_day.reduce((s, d) => s + d.requests, 0), expected.n);
+  assert.ok(usage.by_model.some((m) => m.model === 'gpt-4o' && m.api_kind === 'chat'));
+});
+
+test('regenerate answers the last question again, replacing the old reply without repeating the question', async () => {
+  const chat = await newChat();
+  mock.reply = { chunks: ['First answer'] };
+  await send(chat.id, 'Name a colour');
+  mock.reply = { chunks: ['Second answer'] };
+  const res = await streamPost(server.baseUrl, `/api/chats/${chat.id}/completions`, {
+    token: alice.token,
+    body: { regenerate: true, model_id: bySlug('gpt-4o').id },
+  });
+  assert.equal(res.events.at(-1).type, 'done');
+  assert.equal(res.events[0].user_message.content, 'Name a colour');
+  assert.deepEqual(mock.requests.at(-1).body.messages, [{ role: 'user', content: 'Name a colour' }]);
+  const saved = await messagesIn(chat.id);
+  assert.deepEqual(saved.map((m) => [m.role, m.content]), [['user', 'Name a colour'], ['assistant', 'Second answer']]);
+
+  const empty = await newChat();
+  const nothing = await streamPost(server.baseUrl, `/api/chats/${empty.id}/completions`, {
+    token: alice.token,
+    body: { regenerate: true, model_id: bySlug('gpt-4o').id },
+  });
+  assert.equal(nothing.body.code, 'NOTHING_TO_REGENERATE');
+});

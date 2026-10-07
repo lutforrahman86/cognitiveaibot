@@ -32,6 +32,25 @@ async function currentSubscription(userId) {
   return row || null;
 }
 
+/**
+ * The highest model tier the user's plan unlocks. No plan, or a plan
+ * without tiers, unlocks tier 0, which every model starts at.
+ */
+async function modelTierFor(userId) {
+  const sub = await currentSubscription(userId);
+  const plan = sub?.plan_id ? await getPlan(sub.plan_id) : null;
+  return plan?.model_tier || 0;
+}
+
+/** Refuses a model above the caller's tier. */
+function requireTier(model, userTier) {
+  if ((model.tier || 0) > userTier) {
+    throw new GatewayError('MODEL_REQUIRES_PLAN', `${model.name} is available on higher plans. Upgrade to use it.`, {
+      status: 403,
+    });
+  }
+}
+
 /** The user's plan and subscription state, as clients show it. */
 async function getEntitlement(userId) {
   const sub = await currentSubscription(userId);
@@ -140,4 +159,36 @@ async function openPortal(userId) {
   return { url: session.url };
 }
 
-module.exports = { getEntitlement, currentSubscription, startCheckout, openPortal, ENTITLED_STATUSES };
+/** The user's Stripe invoices, newest first (subscription periods; top-up receipts are emailed by Stripe). */
+async function listInvoices(userId) {
+  const stripe = getStripe();
+  const [user] = await sequelize.query('SELECT stripe_customer_id FROM users WHERE id = :userId', {
+    replacements: { userId },
+    type: QueryTypes.SELECT,
+  });
+  if (!stripe || !user?.stripe_customer_id) return [];
+  const invoices = await stripe.invoices.list({ customer: user.stripe_customer_id, limit: 24 });
+  return invoices.data
+    .filter((i) => i.status !== 'draft')
+    .map((i) => ({
+      id: i.id,
+      number: i.number,
+      created: new Date(i.created * 1000).toISOString(),
+      amount_cents: i.total,
+      currency: i.currency,
+      status: i.status,
+      url: i.hosted_invoice_url,
+      pdf: i.invoice_pdf,
+    }));
+}
+
+module.exports = {
+  listInvoices,
+  getEntitlement,
+  currentSubscription,
+  modelTierFor,
+  requireTier,
+  startCheckout,
+  openPortal,
+  ENTITLED_STATUSES,
+};

@@ -1,5 +1,8 @@
 const UsageRecord = require('../models/UsageRecord');
 const UsageLimit = require('../models/UsageLimit');
+const { QueryTypes } = require('sequelize');
+const { sequelize } = require('../config/database');
+const { toCredits } = require('../gateway/metering');
 
 function getDefaultDateRange(days = 30) {
   const end = new Date();
@@ -55,6 +58,42 @@ async function getDashboard(req, res) {
   }
 }
 
+/**
+ * GET /api/usage/summary?days=30 — what the user's calls cost in credits,
+ * from the request log (app and API together): totals, by day and by model.
+ */
+async function getSummary(req, res) {
+  try {
+    const days = Math.min(Math.max(parseInt(req.query.days, 10) || 30, 1), 90);
+    const replacements = { userId: req.user.id, days };
+    const where = `r.user_id = :userId AND r.status <> 'in_progress' AND r.created_at >= now() - (:days * interval '1 day')`;
+    const totals = `count(*)::int AS requests,
+                    count(*) FILTER (WHERE r.source = 'api')::int AS api_requests,
+                    COALESCE(sum(r.input_tokens), 0)::bigint AS input_tokens,
+                    COALESCE(sum(r.output_tokens), 0)::bigint AS output_tokens,
+                    COALESCE(sum(r.charged_micros), 0)::bigint AS charged_micros`;
+    const q = (sql) => sequelize.query(sql, { replacements, type: QueryTypes.SELECT });
+    const [[summary], byDay, byModel] = await Promise.all([
+      q(`SELECT ${totals} FROM request_logs r WHERE ${where}`),
+      q(`SELECT to_char(date_trunc('day', r.created_at), 'YYYY-MM-DD') AS day, ${totals}
+           FROM request_logs r WHERE ${where} GROUP BY 1 ORDER BY 1 DESC`),
+      q(`SELECT m.slug AS model, m.name, m.provider, m.api_kind, ${totals}
+           FROM request_logs r LEFT JOIN ai_models m ON m.id = r.model_id
+          WHERE ${where} GROUP BY m.slug, m.name, m.provider, m.api_kind ORDER BY charged_micros DESC`),
+    ]);
+    const shape = ({ charged_micros: charged, input_tokens: input, output_tokens: output, ...rest }) => ({
+      ...rest,
+      input_tokens: Number(input),
+      output_tokens: Number(output),
+      credits: toCredits(charged),
+    });
+    res.json({ days, totals: shape(summary), by_day: byDay.map(shape), by_model: byModel.map(shape) });
+  } catch (err) {
+    console.error('usage summary:', err);
+    res.status(500).json({ error: 'Failed to load usage' });
+  }
+}
+
 async function getRecords(req, res) {
   try {
     const { startDate, endDate, limit } = req.query;
@@ -70,4 +109,4 @@ async function getRecords(req, res) {
   }
 }
 
-module.exports = { getDashboard, getRecords };
+module.exports = { getDashboard, getRecords, getSummary };

@@ -1,11 +1,11 @@
 /**
- * Placeholder plans for development, so the Upgrade page has something to
- * show. Prices and credit amounts are NOT decided (roadmap Decision 4): set
- * the real catalog from the admin Plans tab. Existing plans are left alone,
- * so re-seeding never undoes an admin's edits.
+ * The plan catalog: the four plans approved on 2026-10-05. Admins change it
+ * from the admin Plans tab; existing plans are left alone here, so
+ * re-seeding never undoes an admin's edits.
  *
- * At the placeholder 1 credit = US$0.01, each plan gives ~10% fewer credits
- * than its price buys at cost, which roughly covers Stripe's fee.
+ * At 1 credit = US$0.01 each plan gives ~10% fewer credits than its price,
+ * which covers Stripe's fee. Model usage itself carries a 30% markup.
+ * Subscription credits reset each period; top-up credits never expire.
  */
 const { sequelize } = require('../../config/database');
 
@@ -29,7 +29,7 @@ async function seed() {
       { replacements: plan }
     );
   }
-  console.log(`Plans: ${PLANS.length} placeholder plans ensured`);
+  console.log(`Plans: ${PLANS.length} plans ensured`);
 }
 
 module.exports = { seed };

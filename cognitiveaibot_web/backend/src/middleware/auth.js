@@ -16,7 +16,7 @@ async function authMiddleware(req, res, next) {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     const user = await User.findByPk(decoded.userId, {
-      attributes: ['id', 'email', 'name', 'avatar_url', 'type', 'created_at'],
+      attributes: ['id', 'email', 'name', 'avatar_url', 'type', 'created_at', 'suspended_at'],
     });
 
     if (!user) {
@@ -24,6 +24,10 @@ async function authMiddleware(req, res, next) {
     }
 
     req.user = typeof user.get === 'function' ? user.get({ plain: true }) : user;
+    // A suspended account keeps its data but can't use the service.
+    if (req.user.suspended_at) {
+      return res.status(403).json({ error: 'This account is suspended. Contact support.', code: 'ACCOUNT_SUSPENDED' });
+    }
     next();
   } catch (err) {
     if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {

@@ -5,7 +5,7 @@
  * always offer the same models and are metered the same way.
  */
 const UsageRecord = require('../models/UsageRecord');
-const { getProvider, AGGREGATOR } = require('./providers');
+const { getProvider } = require('./providers');
 const openaiCompatible = require('./openaiCompatible');
 const anthropic = require('./anthropic');
 const metering = require('./metering');
@@ -19,32 +19,30 @@ const MAX_OUTPUT_TOKENS = parseInt(process.env.GATEWAY_MAX_OUTPUT_TOKENS, 10) ||
 const CREDIT_USD_VALUE = Number(process.env.CREDIT_USD_VALUE) || 0.01;
 
 /**
- * The route a call to this model would take right now, preferring direct to
- * the model's maker over the aggregator. Null when no route has a key.
+ * The route a call to this model would take right now: direct to the model's
+ * maker. Null when that provider has no adapter or no key is set.
  */
 function routeFor(model) {
-  if (model.provider_model_id) {
-    const direct = getProvider(model.provider);
-    if (direct?.apiKey) return { provider: direct, upstreamModel: model.provider_model_id };
-  }
-  if (model.aggregator_model_id) {
-    const aggregator = getProvider(AGGREGATOR);
-    if (aggregator?.apiKey) return { provider: aggregator, upstreamModel: model.aggregator_model_id };
-  }
-  return null;
+  if (!model.provider_model_id) return null;
+  const direct = getProvider(model.provider);
+  return direct?.apiKey ? { provider: direct, upstreamModel: model.provider_model_id } : null;
 }
 
 /**
  * Whether a model can be called right now, and if not, why.
- * Reasons: inactive · not_priced · not_connected (no route id) ·
- * provider_not_configured (routes exist but no key is set).
+ * Reasons: inactive · not_priced · not_connected (no direct integration
+ * for this model yet) · provider_not_configured (its provider's key isn't set).
  */
 function availability(model) {
   if (!model || model.is_active === false) return { available: false, reason: 'inactive' };
-  if (model.input_credits_per_mtok == null || model.output_credits_per_mtok == null) {
-    return { available: false, reason: 'not_priced' };
-  }
-  if (!model.provider_model_id && !model.aggregator_model_id) {
+  const priced =
+    model.pricing_unit === 'second'
+      ? model.unit_credits != null
+      : model.input_credits_per_mtok != null && model.output_credits_per_mtok != null;
+  if (!priced) return { available: false, reason: 'not_priced' };
+  const provider = model.provider_model_id && getProvider(model.provider);
+  // A non-chat model also needs a provider integration for its kind of call.
+  if (!provider || ((model.api_kind || 'chat') !== 'chat' && !provider.media)) {
     return { available: false, reason: 'not_connected' };
   }
   const route = routeFor(model);
@@ -66,13 +64,14 @@ function prepare(model) {
   };
 }
 
-function openStream({ route, messages, maxTokens, signal }) {
+function openStream({ route, messages, maxTokens, signal, options }) {
   return ADAPTERS[route.provider.adapter].openChatStream({
     provider: route.provider,
     model: route.upstreamModel,
     messages,
     maxTokens,
     signal,
+    options,
   });
 }
 

@@ -89,3 +89,28 @@ export async function saveAdminPlan(plan, id = null) {
   if (!res.ok) throw new Error(data.error || 'Failed to save plan')
   return data.plan
 }
+
+async function send(method, path, body, fallback) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: authHeaders(),
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || fallback)
+  return data
+}
+
+/** Edits a model: on/off, prices, tier, status, capabilities, provider route. */
+export const updateAdminModel = (id, changes) => send('PATCH', `/api/admin/models/${id}`, changes, 'Failed to update model')
+
+export const suspendUser = (id, reason) => send('POST', `/api/admin/users/${id}/suspend`, { reason }, 'Failed to suspend user')
+
+export const unsuspendUser = (id) => send('POST', `/api/admin/users/${id}/unsuspend`, {}, 'Failed to unsuspend user')
+
+export const getAdminRequests = (limit = 100) => send('GET', `/api/admin/requests?limit=${limit}`, undefined, 'Failed to fetch requests')
+
+/** Returns one request's charge to the user, with a reason. */
+export const refundRequest = (id, reason) => send('POST', `/api/admin/requests/${id}/refund`, { reason }, 'Failed to refund')
+
+export const getAuditLog = (limit = 200) => send('GET', `/api/admin/audit?limit=${limit}`, undefined, 'Failed to load the audit log')

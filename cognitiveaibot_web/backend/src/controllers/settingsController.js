@@ -1,4 +1,4 @@
-const { UserSettings } = require('../models/UserSettings');
+const { UserSettings, SettingsError } = require('../models/UserSettings');
 
 async function get(req, res) {
   try {
@@ -15,6 +15,7 @@ async function update(req, res) {
     const settings = await UserSettings.upsert(req.user.id, req.body);
     res.json({ settings });
   } catch (err) {
+    if (err instanceof SettingsError) return res.status(400).json({ error: err.message, code: 'INVALID_SETTING' });
     console.error('update settings:', err);
     res.status(500).json({ error: 'Failed to update settings' });
   }

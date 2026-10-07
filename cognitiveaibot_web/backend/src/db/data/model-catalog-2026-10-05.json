@@ -1,12 +1,13 @@
 {
-  "_about": "Text/code model catalog. Prices are provider list prices in USD per 1M tokens, taken from OpenRouter's public model list on 2026-10-05. Credit prices assume 1 credit = US$0.01 and 0% markup (placeholders until the pricing decision, ROADMAP Decision 4). Anthropic direct ids are from Anthropic's model list; OpenAI and Google direct ids are assumed to match OpenRouter's suffix and are unverified until `npm run models:verify` runs with a key.",
+  "_about": "Text/code model catalog. Prices are provider list prices in USD per 1M tokens, read from OpenRouter's public model list on 2026-10-05 (used only as a price reference: every model is called directly with its own provider's key, never through an aggregator). Credit prices are provider cost x 1.3 (a 30% markup, decided 2026-10-05) at 1 credit = US$0.01, i.e. credits per 1M tokens = USD cost x 130. Anthropic direct ids are from Anthropic's model list; OpenAI direct ids were confirmed by `npm run models:verify` on 2026-10-05; Google direct ids are unverified. Models with no provider_model_id have no direct integration yet and can't be called. Edited 2026-10-05: aggregator ids removed and gpt-oss-120b retired (OpenAI doesn't serve it through its API).",
   "retired_slugs": [
     "claude-3-5-sonnet",
     "claude-3-haiku",
     "gemini-2-flash",
     "gemini-1-5-pro",
     "gemini-1-5-flash",
-    "grok-2"
+    "grok-2",
+    "gpt-oss-120b"
   ],
   "models": [
     {
@@ -16,13 +17,12 @@
       "category": "Reasoning",
       "display_order": 1,
       "provider_model_id": "gpt-6.1-sol",
-      "aggregator_model_id": "openai/gpt-6.1-sol",
       "context_window": 1050000,
       "max_output_tokens": 128000,
       "input_cost_per_mtok": 2,
       "output_cost_per_mtok": 10,
-      "input_credits_per_mtok": 200,
-      "output_credits_per_mtok": 1000
+      "input_credits_per_mtok": 260,
+      "output_credits_per_mtok": 1300
     },
     {
       "slug": "gpt-6-sol",
@@ -31,13 +31,12 @@
       "category": "Reasoning",
       "display_order": 2,
       "provider_model_id": "gpt-6-sol",
-      "aggregator_model_id": "openai/gpt-6-sol",
       "context_window": 1050000,
       "max_output_tokens": 128000,
       "input_cost_per_mtok": 2,
       "output_cost_per_mtok": 10,
-      "input_credits_per_mtok": 200,
-      "output_credits_per_mtok": 1000
+      "input_credits_per_mtok": 260,
+      "output_credits_per_mtok": 1300
     },
     {
       "slug": "gpt-6-luna",
@@ -46,13 +45,12 @@
       "category": "General",
       "display_order": 3,
       "provider_model_id": "gpt-6-luna",
-      "aggregator_model_id": "openai/gpt-6-luna",
       "context_window": 1050000,
       "max_output_tokens": 128000,
       "input_cost_per_mtok": 0.1,
       "output_cost_per_mtok": 0.5,
-      "input_credits_per_mtok": 10,
-      "output_credits_per_mtok": 50
+      "input_credits_per_mtok": 13,
+      "output_credits_per_mtok": 65
     },
     {
       "slug": "gpt-6-astra",
@@ -61,13 +59,12 @@
       "category": "Reasoning",
       "display_order": 4,
       "provider_model_id": "gpt-6-astra",
-      "aggregator_model_id": "openai/gpt-6-astra",
       "context_window": 1050000,
       "max_output_tokens": 128000,
       "input_cost_per_mtok": 10,
       "output_cost_per_mtok": 50,
-      "input_credits_per_mtok": 1000,
-      "output_credits_per_mtok": 5000
+      "input_credits_per_mtok": 1300,
+      "output_credits_per_mtok": 6500
     },
     {
       "slug": "gpt-5-6-terra",
@@ -76,13 +73,12 @@
       "category": "Reasoning",
       "display_order": 5,
       "provider_model_id": "gpt-5.6-terra",
-      "aggregator_model_id": "openai/gpt-5.6-terra",
       "context_window": 1050000,
       "max_output_tokens": 128000,
       "input_cost_per_mtok": 2,
       "output_cost_per_mtok": 12,
-      "input_credits_per_mtok": 200,
-      "output_credits_per_mtok": 1200
+      "input_credits_per_mtok": 260,
+      "output_credits_per_mtok": 1560
     },
     {
       "slug": "gpt-5-6-luna",
@@ -91,13 +87,12 @@
       "category": "General",
       "display_order": 6,
       "provider_model_id": "gpt-5.6-luna",
-      "aggregator_model_id": "openai/gpt-5.6-luna",
       "context_window": 1050000,
       "max_output_tokens": 128000,
       "input_cost_per_mtok": 0.2,
       "output_cost_per_mtok": 1.2,
-      "input_credits_per_mtok": 20,
-      "output_credits_per_mtok": 120
+      "input_credits_per_mtok": 26,
+      "output_credits_per_mtok": 156
     },
     {
       "slug": "gpt-5-4-mini",
@@ -106,13 +101,12 @@
       "category": "General",
       "display_order": 7,
       "provider_model_id": "gpt-5.4-mini",
-      "aggregator_model_id": "openai/gpt-5.4-mini",
       "context_window": 400000,
       "max_output_tokens": 128000,
       "input_cost_per_mtok": 0.75,
       "output_cost_per_mtok": 4.5,
-      "input_credits_per_mtok": 75,
-      "output_credits_per_mtok": 450
+      "input_credits_per_mtok": 97.5,
+      "output_credits_per_mtok": 585
     },
     {
       "slug": "gpt-5-4-nano",
@@ -121,13 +115,12 @@
       "category": "General",
       "display_order": 8,
       "provider_model_id": "gpt-5.4-nano",
-      "aggregator_model_id": "openai/gpt-5.4-nano",
       "context_window": 400000,
       "max_output_tokens": 128000,
       "input_cost_per_mtok": 0.2,
       "output_cost_per_mtok": 1.25,
-      "input_credits_per_mtok": 20,
-      "output_credits_per_mtok": 125
+      "input_credits_per_mtok": 26,
+      "output_credits_per_mtok": 162.5
     },
     {
       "slug": "gpt-5-3-codex",
@@ -136,28 +129,12 @@
       "category": "Coding",
       "display_order": 9,
       "provider_model_id": "gpt-5.3-codex",
-      "aggregator_model_id": "openai/gpt-5.3-codex",
       "context_window": 400000,
       "max_output_tokens": 128000,
       "input_cost_per_mtok": 1.75,
       "output_cost_per_mtok": 14,
-      "input_credits_per_mtok": 175,
-      "output_credits_per_mtok": 1400
-    },
-    {
-      "slug": "gpt-oss-120b",
-      "name": "gpt-oss-120b",
-      "provider": "OpenAI",
-      "category": "General",
-      "display_order": 10,
-      "provider_model_id": "gpt-oss-120b",
-      "aggregator_model_id": "openai/gpt-oss-120b",
-      "context_window": 131072,
-      "max_output_tokens": 117964,
-      "input_cost_per_mtok": 0.037,
-      "output_cost_per_mtok": 0.17,
-      "input_credits_per_mtok": 3.7,
-      "output_credits_per_mtok": 17
+      "input_credits_per_mtok": 227.5,
+      "output_credits_per_mtok": 1820
     },
     {
       "slug": "gpt-4o",
@@ -166,13 +143,12 @@
       "category": "Reasoning",
       "display_order": 11,
       "provider_model_id": "gpt-4o",
-      "aggregator_model_id": "openai/gpt-4o",
       "context_window": 128000,
       "max_output_tokens": 16384,
       "input_cost_per_mtok": 2.5,
       "output_cost_per_mtok": 10,
-      "input_credits_per_mtok": 250,
-      "output_credits_per_mtok": 1000
+      "input_credits_per_mtok": 325,
+      "output_credits_per_mtok": 1300
     },
     {
       "slug": "gpt-4o-mini",
@@ -181,13 +157,12 @@
       "category": "Coding",
       "display_order": 12,
       "provider_model_id": "gpt-4o-mini",
-      "aggregator_model_id": "openai/gpt-4o-mini",
       "context_window": 128000,
       "max_output_tokens": 16384,
       "input_cost_per_mtok": 0.15,
       "output_cost_per_mtok": 0.6,
-      "input_credits_per_mtok": 15,
-      "output_credits_per_mtok": 60
+      "input_credits_per_mtok": 19.5,
+      "output_credits_per_mtok": 78
     },
     {
       "slug": "gpt-4-turbo",
@@ -196,13 +171,12 @@
       "category": "Reasoning",
       "display_order": 13,
       "provider_model_id": "gpt-4-turbo",
-      "aggregator_model_id": "openai/gpt-4-turbo",
       "context_window": 128000,
       "max_output_tokens": 4096,
       "input_cost_per_mtok": 10,
       "output_cost_per_mtok": 30,
-      "input_credits_per_mtok": 1000,
-      "output_credits_per_mtok": 3000
+      "input_credits_per_mtok": 1300,
+      "output_credits_per_mtok": 3900
     },
     {
       "slug": "claude-fable-5-1",
@@ -211,13 +185,12 @@
       "category": "Reasoning",
       "display_order": 14,
       "provider_model_id": "claude-fable-5-1",
-      "aggregator_model_id": "anthropic/claude-fable-5.1",
       "context_window": 1000000,
       "max_output_tokens": 128000,
       "input_cost_per_mtok": 10,
       "output_cost_per_mtok": 50,
-      "input_credits_per_mtok": 1000,
-      "output_credits_per_mtok": 5000
+      "input_credits_per_mtok": 1300,
+      "output_credits_per_mtok": 6500
     },
     {
       "slug": "claude-opus-5-5",
@@ -226,13 +199,12 @@
       "category": "Reasoning",
       "display_order": 15,
       "provider_model_id": "claude-opus-5-5",
-      "aggregator_model_id": "anthropic/claude-opus-5.5",
       "context_window": 1000000,
       "max_output_tokens": 128000,
       "input_cost_per_mtok": 4,
       "output_cost_per_mtok": 20,
-      "input_credits_per_mtok": 400,
-      "output_credits_per_mtok": 2000
+      "input_credits_per_mtok": 520,
+      "output_credits_per_mtok": 2600
     },
     {
       "slug": "claude-sonnet-5-5",
@@ -241,13 +213,12 @@
       "category": "Coding",
       "display_order": 16,
       "provider_model_id": "claude-sonnet-5-5",
-      "aggregator_model_id": "anthropic/claude-sonnet-5.5",
       "context_window": 1000000,
       "max_output_tokens": 128000,
       "input_cost_per_mtok": 2,
       "output_cost_per_mtok": 10,
-      "input_credits_per_mtok": 200,
-      "output_credits_per_mtok": 1000
+      "input_credits_per_mtok": 260,
+      "output_credits_per_mtok": 1300
     },
     {
       "slug": "claude-haiku-4-5",
@@ -256,13 +227,12 @@
       "category": "General",
       "display_order": 17,
       "provider_model_id": "claude-haiku-4-5",
-      "aggregator_model_id": "anthropic/claude-haiku-4.5",
       "context_window": 200000,
       "max_output_tokens": 64000,
       "input_cost_per_mtok": 1,
       "output_cost_per_mtok": 5,
-      "input_credits_per_mtok": 100,
-      "output_credits_per_mtok": 500
+      "input_credits_per_mtok": 130,
+      "output_credits_per_mtok": 650
     },
     {
       "slug": "claude-sonnet-4",
@@ -271,13 +241,12 @@
       "category": "Reasoning",
       "display_order": 18,
       "provider_model_id": "claude-sonnet-4-0",
-      "aggregator_model_id": "anthropic/claude-sonnet-4",
       "context_window": 200000,
       "max_output_tokens": 64000,
       "input_cost_per_mtok": 3,
       "output_cost_per_mtok": 15,
-      "input_credits_per_mtok": 300,
-      "output_credits_per_mtok": 1500
+      "input_credits_per_mtok": 390,
+      "output_credits_per_mtok": 1950
     },
     {
       "slug": "gemini-3-1-pro-preview",
@@ -286,13 +255,12 @@
       "category": "Reasoning",
       "display_order": 19,
       "provider_model_id": "gemini-3.1-pro-preview",
-      "aggregator_model_id": "google/gemini-3.1-pro-preview",
       "context_window": 1048576,
       "max_output_tokens": 65536,
       "input_cost_per_mtok": 2,
       "output_cost_per_mtok": 12,
-      "input_credits_per_mtok": 200,
-      "output_credits_per_mtok": 1200
+      "input_credits_per_mtok": 260,
+      "output_credits_per_mtok": 1560
     },
     {
       "slug": "gemini-3-8-flash",
@@ -301,13 +269,12 @@
       "category": "General",
       "display_order": 20,
       "provider_model_id": "gemini-3.8-flash",
-      "aggregator_model_id": "google/gemini-3.8-flash",
       "context_window": 1048576,
       "max_output_tokens": 65536,
       "input_cost_per_mtok": 0.75,
       "output_cost_per_mtok": 3.75,
-      "input_credits_per_mtok": 75,
-      "output_credits_per_mtok": 375
+      "input_credits_per_mtok": 97.5,
+      "output_credits_per_mtok": 487.5
     },
     {
       "slug": "gemini-3-5-flash-lite",
@@ -316,13 +283,12 @@
       "category": "General",
       "display_order": 21,
       "provider_model_id": "gemini-3.5-flash-lite",
-      "aggregator_model_id": "google/gemini-3.5-flash-lite",
       "context_window": 1048576,
       "max_output_tokens": 65536,
       "input_cost_per_mtok": 0.3,
       "output_cost_per_mtok": 2.5,
-      "input_credits_per_mtok": 30,
-      "output_credits_per_mtok": 250
+      "input_credits_per_mtok": 39,
+      "output_credits_per_mtok": 325
     },
     {
       "slug": "gemini-2-5-pro",
@@ -331,13 +297,12 @@
       "category": "Reasoning",
       "display_order": 22,
       "provider_model_id": "gemini-2.5-pro",
-      "aggregator_model_id": "google/gemini-2.5-pro",
       "context_window": 1048576,
       "max_output_tokens": 65536,
       "input_cost_per_mtok": 1.25,
       "output_cost_per_mtok": 10,
-      "input_credits_per_mtok": 125,
-      "output_credits_per_mtok": 1000
+      "input_credits_per_mtok": 162.5,
+      "output_credits_per_mtok": 1300
     },
     {
       "slug": "gemini-2-5-flash",
@@ -346,13 +311,12 @@
       "category": "General",
       "display_order": 23,
       "provider_model_id": "gemini-2.5-flash",
-      "aggregator_model_id": "google/gemini-2.5-flash",
       "context_window": 1048576,
       "max_output_tokens": 65535,
       "input_cost_per_mtok": 0.3,
       "output_cost_per_mtok": 2.5,
-      "input_credits_per_mtok": 30,
-      "output_credits_per_mtok": 250
+      "input_credits_per_mtok": 39,
+      "output_credits_per_mtok": 325
     },
     {
       "slug": "deepseek-v4-pro",
@@ -361,13 +325,12 @@
       "category": "Reasoning",
       "display_order": 24,
       "provider_model_id": null,
-      "aggregator_model_id": "deepseek/deepseek-v4-pro",
       "context_window": 1048576,
       "max_output_tokens": 384000,
       "input_cost_per_mtok": 0.2088,
       "output_cost_per_mtok": 0.4176,
-      "input_credits_per_mtok": 20.88,
-      "output_credits_per_mtok": 41.76
+      "input_credits_per_mtok": 27.144,
+      "output_credits_per_mtok": 54.288
     },
     {
       "slug": "deepseek-v4-flash",
@@ -376,13 +339,12 @@
       "category": "General",
       "display_order": 25,
       "provider_model_id": null,
-      "aggregator_model_id": "deepseek/deepseek-v4-flash",
       "context_window": 1048576,
       "max_output_tokens": 943718,
       "input_cost_per_mtok": 0.03,
       "output_cost_per_mtok": 1.28,
-      "input_credits_per_mtok": 3,
-      "output_credits_per_mtok": 128
+      "input_credits_per_mtok": 3.9,
+      "output_credits_per_mtok": 166.4
     },
     {
       "slug": "deepseek-v3",
@@ -391,13 +353,12 @@
       "category": "Coding",
       "display_order": 26,
       "provider_model_id": null,
-      "aggregator_model_id": "deepseek/deepseek-chat",
       "context_window": 163840,
       "max_output_tokens": 16000,
       "input_cost_per_mtok": 0.2574,
       "output_cost_per_mtok": 1.0287,
-      "input_credits_per_mtok": 25.74,
-      "output_credits_per_mtok": 102.87
+      "input_credits_per_mtok": 33.462,
+      "output_credits_per_mtok": 133.731
     },
     {
       "slug": "deepseek-r1-0528",
@@ -406,13 +367,12 @@
       "category": "Reasoning",
       "display_order": 27,
       "provider_model_id": null,
-      "aggregator_model_id": "deepseek/deepseek-r1-0528",
       "context_window": 163840,
       "max_output_tokens": 32768,
       "input_cost_per_mtok": 0.5,
       "output_cost_per_mtok": 2.15,
-      "input_credits_per_mtok": 50,
-      "output_credits_per_mtok": 215
+      "input_credits_per_mtok": 65,
+      "output_credits_per_mtok": 279.5
     },
     {
       "slug": "mistral-large",
@@ -421,13 +381,12 @@
       "category": "Coding",
       "display_order": 28,
       "provider_model_id": null,
-      "aggregator_model_id": "mistralai/mistral-large-2512",
       "context_window": 262144,
       "max_output_tokens": 209715,
       "input_cost_per_mtok": 0.5,
       "output_cost_per_mtok": 1.5,
-      "input_credits_per_mtok": 50,
-      "output_credits_per_mtok": 150
+      "input_credits_per_mtok": 65,
+      "output_credits_per_mtok": 195
     },
     {
       "slug": "mistral-medium-3-5",
@@ -436,13 +395,12 @@
       "category": "Reasoning",
       "display_order": 29,
       "provider_model_id": null,
-      "aggregator_model_id": "mistralai/mistral-medium-3-5",
       "context_window": 262144,
       "max_output_tokens": 209715,
       "input_cost_per_mtok": 1.5,
       "output_cost_per_mtok": 7.5,
-      "input_credits_per_mtok": 150,
-      "output_credits_per_mtok": 750
+      "input_credits_per_mtok": 195,
+      "output_credits_per_mtok": 975
     },
     {
       "slug": "mistral-small-2603",
@@ -451,13 +409,12 @@
       "category": "General",
       "display_order": 30,
       "provider_model_id": null,
-      "aggregator_model_id": "mistralai/mistral-small-2603",
       "context_window": 262144,
       "max_output_tokens": 209715,
       "input_cost_per_mtok": 0.15,
       "output_cost_per_mtok": 0.6,
-      "input_credits_per_mtok": 15,
-      "output_credits_per_mtok": 60
+      "input_credits_per_mtok": 19.5,
+      "output_credits_per_mtok": 78
     },
     {
       "slug": "devstral-2512",
@@ -466,13 +423,12 @@
       "category": "Coding",
       "display_order": 31,
       "provider_model_id": null,
-      "aggregator_model_id": "mistralai/devstral-2512",
       "context_window": 262144,
       "max_output_tokens": 209715,
       "input_cost_per_mtok": 0.4,
       "output_cost_per_mtok": 2,
-      "input_credits_per_mtok": 40,
-      "output_credits_per_mtok": 200
+      "input_credits_per_mtok": 52,
+      "output_credits_per_mtok": 260
     },
     {
       "slug": "grok-4-7",
@@ -481,13 +437,12 @@
       "category": "Reasoning",
       "display_order": 32,
       "provider_model_id": null,
-      "aggregator_model_id": "x-ai/grok-4.7",
       "context_window": 500000,
       "max_output_tokens": 450000,
       "input_cost_per_mtok": 2,
       "output_cost_per_mtok": 6,
-      "input_credits_per_mtok": 200,
-      "output_credits_per_mtok": 600
+      "input_credits_per_mtok": 260,
+      "output_credits_per_mtok": 780
     },
     {
       "slug": "grok-4-3",
@@ -496,13 +451,12 @@
       "category": "General",
       "display_order": 33,
       "provider_model_id": null,
-      "aggregator_model_id": "x-ai/grok-4.3",
       "context_window": 1000000,
       "max_output_tokens": 900000,
       "input_cost_per_mtok": 1.25,
       "output_cost_per_mtok": 2.5,
-      "input_credits_per_mtok": 125,
-      "output_credits_per_mtok": 250
+      "input_credits_per_mtok": 162.5,
+      "output_credits_per_mtok": 325
     },
     {
       "slug": "grok-build-0-1",
@@ -511,13 +465,12 @@
       "category": "Coding",
       "display_order": 34,
       "provider_model_id": null,
-      "aggregator_model_id": "x-ai/grok-build-0.1",
       "context_window": 256000,
       "max_output_tokens": 230400,
       "input_cost_per_mtok": 1,
       "output_cost_per_mtok": 2,
-      "input_credits_per_mtok": 100,
-      "output_credits_per_mtok": 200
+      "input_credits_per_mtok": 130,
+      "output_credits_per_mtok": 260
     },
     {
       "slug": "perplexity-sonar",
@@ -526,13 +479,12 @@
       "category": "Search",
       "display_order": 35,
       "provider_model_id": null,
-      "aggregator_model_id": "perplexity/sonar",
       "context_window": 127072,
       "max_output_tokens": 114364,
       "input_cost_per_mtok": 1,
       "output_cost_per_mtok": 1,
-      "input_credits_per_mtok": 100,
-      "output_credits_per_mtok": 100
+      "input_credits_per_mtok": 130,
+      "output_credits_per_mtok": 130
     },
     {
       "slug": "sonar-pro",
@@ -541,13 +493,12 @@
       "category": "Search",
       "display_order": 36,
       "provider_model_id": null,
-      "aggregator_model_id": "perplexity/sonar-pro",
       "context_window": 200000,
       "max_output_tokens": 8000,
       "input_cost_per_mtok": 3,
       "output_cost_per_mtok": 15,
-      "input_credits_per_mtok": 300,
-      "output_credits_per_mtok": 1500
+      "input_credits_per_mtok": 390,
+      "output_credits_per_mtok": 1950
     },
     {
       "slug": "sonar-reasoning-pro",
@@ -556,13 +507,12 @@
       "category": "Search",
       "display_order": 37,
       "provider_model_id": null,
-      "aggregator_model_id": "perplexity/sonar-reasoning-pro",
       "context_window": 128000,
       "max_output_tokens": 115200,
       "input_cost_per_mtok": 2,
       "output_cost_per_mtok": 8,
-      "input_credits_per_mtok": 200,
-      "output_credits_per_mtok": 800
+      "input_credits_per_mtok": 260,
+      "output_credits_per_mtok": 1040
     },
     {
       "slug": "llama-4-maverick",
@@ -571,13 +521,12 @@
       "category": "General",
       "display_order": 38,
       "provider_model_id": null,
-      "aggregator_model_id": "meta-llama/llama-4-maverick",
       "context_window": 1048576,
       "max_output_tokens": 16384,
       "input_cost_per_mtok": 0.1875,
       "output_cost_per_mtok": 0.6525,
-      "input_credits_per_mtok": 18.75,
-      "output_credits_per_mtok": 65.25
+      "input_credits_per_mtok": 24.375,
+      "output_credits_per_mtok": 84.825
     },
     {
       "slug": "llama-3-3-70b-instruct",
@@ -586,13 +535,12 @@
       "category": "General",
       "display_order": 39,
       "provider_model_id": null,
-      "aggregator_model_id": "meta-llama/llama-3.3-70b-instruct",
       "context_window": 131072,
       "max_output_tokens": 16384,
       "input_cost_per_mtok": 0.1,
       "output_cost_per_mtok": 0.32,
-      "input_credits_per_mtok": 10,
-      "output_credits_per_mtok": 32
+      "input_credits_per_mtok": 13,
+      "output_credits_per_mtok": 41.6
     },
     {
       "slug": "qwen3-8-max-0902",
@@ -601,13 +549,12 @@
       "category": "Reasoning",
       "display_order": 40,
       "provider_model_id": null,
-      "aggregator_model_id": "qwen/qwen3.8-max-0902",
       "context_window": 1000000,
       "max_output_tokens": 131072,
       "input_cost_per_mtok": 2,
       "output_cost_per_mtok": 6,
-      "input_credits_per_mtok": 200,
-      "output_credits_per_mtok": 600
+      "input_credits_per_mtok": 260,
+      "output_credits_per_mtok": 780
     },
     {
       "slug": "qwen3-7-plus",
@@ -616,13 +563,12 @@
       "category": "General",
       "display_order": 41,
       "provider_model_id": null,
-      "aggregator_model_id": "qwen/qwen3.7-plus",
       "context_window": 1000000,
       "max_output_tokens": 131072,
       "input_cost_per_mtok": 0.32,
       "output_cost_per_mtok": 1.28,
-      "input_credits_per_mtok": 32,
-      "output_credits_per_mtok": 128
+      "input_credits_per_mtok": 41.6,
+      "output_credits_per_mtok": 166.4
     },
     {
       "slug": "qwen3-8-flash",
@@ -631,13 +577,12 @@
       "category": "General",
       "display_order": 42,
       "provider_model_id": null,
-      "aggregator_model_id": "qwen/qwen3.8-flash",
       "context_window": 1000000,
       "max_output_tokens": 131072,
       "input_cost_per_mtok": 0.15,
       "output_cost_per_mtok": 0.47,
-      "input_credits_per_mtok": 15,
-      "output_credits_per_mtok": 47
+      "input_credits_per_mtok": 19.5,
+      "output_credits_per_mtok": 61.1
     },
     {
       "slug": "qwen3-coder-next",
@@ -646,13 +591,12 @@
       "category": "Coding",
       "display_order": 43,
       "provider_model_id": null,
-      "aggregator_model_id": "qwen/qwen3-coder-next",
       "context_window": 262144,
       "max_output_tokens": 235929,
       "input_cost_per_mtok": 0.12,
       "output_cost_per_mtok": 0.8,
-      "input_credits_per_mtok": 12,
-      "output_credits_per_mtok": 80
+      "input_credits_per_mtok": 15.6,
+      "output_credits_per_mtok": 104
     },
     {
       "slug": "kimi-k3",
@@ -661,13 +605,12 @@
       "category": "Reasoning",
       "display_order": 44,
       "provider_model_id": null,
-      "aggregator_model_id": "moonshotai/kimi-k3",
       "context_window": 1048576,
       "max_output_tokens": 943718,
       "input_cost_per_mtok": 0.67,
       "output_cost_per_mtok": 14,
-      "input_credits_per_mtok": 67,
-      "output_credits_per_mtok": 1400
+      "input_credits_per_mtok": 87.1,
+      "output_credits_per_mtok": 1820
     },
     {
       "slug": "glm-5-3",
@@ -676,13 +619,12 @@
       "category": "Coding",
       "display_order": 45,
       "provider_model_id": null,
-      "aggregator_model_id": "z-ai/glm-5.3",
       "context_window": 1048576,
       "max_output_tokens": 131072,
       "input_cost_per_mtok": 1.4,
       "output_cost_per_mtok": 4.4,
-      "input_credits_per_mtok": 140,
-      "output_credits_per_mtok": 440
+      "input_credits_per_mtok": 182,
+      "output_credits_per_mtok": 572
     },
     {
       "slug": "minimax-m3",
@@ -691,13 +633,12 @@
       "category": "General",
       "display_order": 46,
       "provider_model_id": null,
-      "aggregator_model_id": "minimax/minimax-m3",
       "context_window": 1048576,
       "max_output_tokens": 512000,
       "input_cost_per_mtok": 0.3,
       "output_cost_per_mtok": 1.2,
-      "input_credits_per_mtok": 30,
-      "output_credits_per_mtok": 120
+      "input_credits_per_mtok": 39,
+      "output_credits_per_mtok": 156
     }
   ]
 }

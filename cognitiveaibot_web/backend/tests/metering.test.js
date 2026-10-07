@@ -50,7 +50,6 @@ before(async () => {
   sequelize = await resetDatabase();
   mock = await startMockProvider();
   process.env.OPENAI_BASE_URL = mock.baseUrl;
-  process.env.OPENROUTER_BASE_URL = mock.baseUrl;
   // The Anthropic SDK adds /v1/messages itself.
   process.env.ANTHROPIC_BASE_URL = mock.baseUrl.replace(/\/v1$/, '');
   metering = require('../src/gateway/metering');
@@ -62,7 +61,6 @@ beforeEach(async () => {
   mock.requests = [];
   process.env.OPENAI_API_KEY = 'test-openai-key';
   delete process.env.ANTHROPIC_API_KEY;
-  delete process.env.OPENROUTER_API_KEY;
   delete process.env.SIGNUP_TRIAL_CREDITS;
   await refreshModels();
 });
@@ -96,7 +94,7 @@ test('the charge is the exact token cost, recorded in the ledger and the request
   const done = events.at(-1);
 
   // GPT-4o costs $2.50 / $10 per 1M tokens; at 1 credit = $0.01 that is 250 / 1000 credits.
-  const expected = 21 * 250 + 5 * 1000; // micro-credits
+  const expected = 21 * 325 + 5 * 1300; // micro-credits: GPT-4o at cost + 30%
   assert.equal(done.credits.charged, expected / 1e6);
   assert.equal(done.credits.balance, (10e6 - expected) / 1e6);
   assert.deepEqual(await account(dan.user.id), { balance: 10e6 - expected, held: 0 });
@@ -140,7 +138,7 @@ test('the charge never exceeds the hold; any shortfall is recorded as unbilled',
 
   const log = await lastLog(fay.user.id);
   assert.equal(Number(log.charged_micros), Number(log.held_micros));
-  assert.equal(Number(log.unbilled_micros), 20 * 250 + 50_000 * 1000 - Number(log.held_micros));
+  assert.equal(Number(log.unbilled_micros), 20 * 325 + 50_000 * 1300 - Number(log.held_micros));
   const acct = await account(fay.user.id);
   assert.equal(acct.held, 0);
   assert.ok(acct.balance >= 0);
@@ -240,8 +238,8 @@ test('Anthropic: streams the reply and bills the token counts from its stream', 
   const done = events.at(-1);
   assert.equal(done.type, 'done');
   assert.deepEqual(done.usage, { input_tokens: 30, output_tokens: 7, estimated: false });
-  // Sonnet 5.5: $2 / $10 per 1M tokens = 200 / 1000 credits.
-  assert.equal(done.credits.charged, (30 * 200 + 7 * 1000) / 1e6);
+  // Sonnet 5.5: $2 / $10 per 1M tokens, + 30% = 260 / 1300 credits.
+  assert.equal(done.credits.charged, (30 * 260 + 7 * 1300) / 1e6);
 
   const [upstream] = mock.requests;
   assert.equal(upstream.url, '/v1/messages');
@@ -271,40 +269,52 @@ test('Anthropic: a rejected key is a clear error, and a refusal keeps the partia
   assert.equal((await account(lee.user.id)).held, 0);
 });
 
-test('models go through OpenRouter when there is no direct key, and direct takes over once set', async () => {
-  process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
+test('every model is called directly at its own provider, and only once that provider’s key is set', async () => {
+  // Without an Anthropic key, Claude can't be called, whatever other keys are set.
+  assert.equal(bySlug('claude-sonnet-5-5').available, false);
+  // No direct integration yet: never callable.
+  assert.equal(bySlug('deepseek-v4-pro').available, false);
+
+  process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
   await refreshModels();
   const max = await userWith(10, 'Max');
-
-  // DeepSeek has no direct adapter: OpenRouter only.
-  assert.equal(bySlug('deepseek-v4-pro').available, true);
-  await send(max, (await newChat(max.token)).id, 'Hello', 'deepseek-v4-pro');
-  assert.equal(mock.requests[0].url, '/v1/chat/completions');
-  assert.equal(mock.requests[0].body.model, 'deepseek/deepseek-v4-pro');
-  assert.equal(mock.requests[0].headers.authorization, 'Bearer test-openrouter-key');
-  assert.equal((await lastLog(max.user.id)).route, 'OpenRouter');
-
-  // Claude through OpenRouter without an Anthropic key…
-  mock.requests = [];
-  await send(max, (await newChat(max.token)).id, 'Hello', 'claude-sonnet-5-5');
-  assert.equal(mock.requests[0].body.model, 'anthropic/claude-sonnet-5.5');
-
-  // …and direct to Anthropic once its key is set.
-  process.env.ANTHROPIC_API_KEY = 'test-anthropic-key';
-  mock.requests = [];
   await send(max, (await newChat(max.token)).id, 'Hello', 'claude-sonnet-5-5');
   assert.equal(mock.requests[0].url, '/v1/messages');
+  assert.equal(mock.requests[0].headers['x-api-key'], 'test-anthropic-key');
+  assert.equal(mock.requests[0].body.model, 'claude-sonnet-5-5');
   assert.equal((await lastLog(max.user.id)).route, 'Anthropic');
+
+  const ded = await userWith(10, 'Ded');
+  const res = await send(ded, (await newChat(ded.token)).id, 'Hello', 'deepseek-v4-pro');
+  assert.equal(res.body.code, 'MODEL_UNAVAILABLE');
+  assert.equal(mock.requests.length, 1, 'nothing else was called');
+});
+
+test('every priced model charges provider cost + 30% (1 credit = US$0.01)', async () => {
+  const [rows] = await sequelize.query(
+    `SELECT slug, input_cost_per_mtok, output_cost_per_mtok, input_credits_per_mtok, output_credits_per_mtok
+       FROM ai_models WHERE is_active AND input_cost_per_mtok IS NOT NULL`
+  );
+  assert.ok(rows.length >= 40);
+  for (const m of rows) {
+    for (const side of ['input', 'output']) {
+      const expected = Math.round(Number(m[`${side}_cost_per_mtok`]) * 130 * 1e4) / 1e4;
+      assert.equal(Number(m[`${side}_credits_per_mtok`]), expected, `${m.slug} ${side}`);
+    }
+  }
 });
 
 test('a model without prices is never callable', async () => {
   await sequelize.query("UPDATE ai_models SET input_credits_per_mtok = NULL WHERE slug = 'gpt-4o-mini'");
+  // Edited behind the admin API's back, so the model list cache is cleared by hand.
+  await require('../src/services/cache').invalidate('models');
   await refreshModels();
   assert.equal(bySlug('gpt-4o-mini').available, false);
   const ned = await userWith(10, 'Ned');
   const res = await send(ned, (await newChat(ned.token)).id, 'Hello', 'gpt-4o-mini');
   assert.equal(res.body.code, 'MODEL_UNAVAILABLE');
-  await sequelize.query("UPDATE ai_models SET input_credits_per_mtok = 15 WHERE slug = 'gpt-4o-mini'");
+  await sequelize.query("UPDATE ai_models SET input_credits_per_mtok = 19.5 WHERE slug = 'gpt-4o-mini'");
+  await require('../src/services/cache').invalidate('models');
 });
 
 test('admins can grant or remove credits with a reason; other users cannot', async () => {
@@ -344,8 +354,8 @@ test('the admin usage view shows provider cost against what was charged', async 
   const m = usage.margin;
   assert.ok(m.requests >= 5);
   assert.ok(m.provider_cost_usd > 0);
-  // Credits are priced at cost for now (0% markup), so charged ≈ cost; the
-  // difference comes only from requests charged at their hold (unbilled).
+  // Credits are priced at cost + 30%; requests charged at their hold leave
+  // an unbilled amount instead.
   assert.ok(m.charged_usd > 0);
   assert.ok(m.unbilled_credits > 0, 'the over-the-hold test above left an unbilled amount');
   assert.ok(m.by_model.some((r) => r.route === 'Anthropic'));

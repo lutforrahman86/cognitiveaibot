@@ -48,7 +48,9 @@ export async function deleteChat(id) {
 }
 
 /**
- * Sends a message and streams the model's reply.
+ * Sends a message and streams the model's reply. `body` is
+ * `{ content, model_id }`, or `{ regenerate: true, model_id }` to answer the
+ * chat's last message again (replacing the reply after it).
  *
  * Calls `onEvent` with each server event as it arrives:
  *   { type: 'start', user_message, chat }  { type: 'delta', text }
@@ -56,11 +58,11 @@ export async function deleteChat(id) {
  * Rejects with an Error carrying `code` when the request is refused before
  * streaming starts (nothing was saved). Abort `signal` to stop the reply.
  */
-export async function streamCompletion(chatId, { content, model_id }, { onEvent, signal } = {}) {
+export async function streamCompletion(chatId, body, { onEvent, signal } = {}) {
   const res = await fetch(`${API_BASE}/api/chats/${chatId}/completions`, {
     method: 'POST',
     headers: authHeaders(),
-    body: JSON.stringify({ content, model_id }),
+    body: JSON.stringify(body),
     signal,
   })
   if (!(res.headers.get('content-type') || '').startsWith('text/event-stream')) {
@@ -180,4 +182,39 @@ export async function uploadAvatar(file) {
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'Failed to upload photo')
   return data.user
+}
+
+export async function getSettings() {
+  const res = await fetch(`${API_BASE}/api/settings`, { headers: authHeaders() })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return null
+  return data.settings
+}
+
+/** Saves only the given settings; resolves to all of them. */
+export async function updateSettings(changes) {
+  const res = await fetch(`${API_BASE}/api/settings`, {
+    method: 'PATCH',
+    headers: authHeaders(),
+    body: JSON.stringify(changes),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Failed to save settings')
+  return data.settings
+}
+
+/** Credits spent, by day and model (app and API). */
+export async function getUsageSummary(days = 30) {
+  const res = await fetch(`${API_BASE}/api/usage/summary?days=${days}`, { headers: authHeaders() })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Failed to load usage')
+  return data
+}
+
+/** The signed-in user's Stripe invoices. */
+export async function getInvoices() {
+  const res = await fetch(`${API_BASE}/api/billing/invoices`, { headers: authHeaders() })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return []
+  return data.invoices
 }
