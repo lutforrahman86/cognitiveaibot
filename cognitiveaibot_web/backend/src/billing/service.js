@@ -99,6 +99,9 @@ async function ensureCustomer(stripe, userId) {
  */
 async function startCheckout(userId, planId) {
   const stripe = requireStripe();
+  // A verified email before taking money: receipts must reach the buyer,
+  // and throwaway accounts can't be used to test stolen cards as easily.
+  await require('../auth/accounts').requireVerified(userId);
   const plan = await getPlan(planId);
   if (!plan || !plan.active) {
     throw new GatewayError('PLAN_NOT_FOUND', 'That plan isn’t available.', { status: 404 });

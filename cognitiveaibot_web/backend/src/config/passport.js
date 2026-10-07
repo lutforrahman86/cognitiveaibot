@@ -22,7 +22,7 @@ passport.use(
         }
         const user = await User.findOne({
           where: { email: email.trim().toLowerCase() },
-          attributes: ['id', 'email', 'password_hash', 'name', 'type', 'created_at', 'suspended_at'],
+          attributes: ['id', 'email', 'password_hash', 'name', 'type', 'created_at', 'suspended_at', 'email_verified_at'],
         });
         if (!user) {
           return done(null, false, { message: 'Invalid email or password' });
@@ -44,6 +44,7 @@ passport.use(
           name: userPlain.name,
           type: userPlain.type || 'user',
           created_at: userPlain.created_at,
+          email_verified_at: userPlain.email_verified_at,
         });
       } catch (err) {
         return done(err, null);
@@ -81,7 +82,13 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
           if (email) {
             u = await User.findOne({ where: { email } });
             if (u) {
-              await u.update({ google_id: googleId });
+              // The provider has verified this email. If the existing account
+              // never verified it, someone else may have registered it: drop its
+              // password so only the provider sign-in gets in.
+              await u.update({
+                google_id: googleId,
+                ...(u.email_verified_at ? {} : { password_hash: null, email_verified_at: new Date(), password_changed_at: new Date() }),
+              });
               return done(null, { ...u.get({ plain: true }), type: u.type || 'user' });
             }
           }
@@ -94,7 +101,9 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
             password_hash: null,
             name: name || null,
             google_id: googleId,
+            email_verified_at: new Date(),
           });
+          await require('../auth/accounts').grantTrialCredits(u.id);
           return done(null, { ...u.get({ plain: true }), type: u.type || 'user' });
         } catch (err) {
           return done(err, null);
@@ -128,7 +137,13 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
           if (email) {
             u = await User.findOne({ where: { email } });
             if (u) {
-              await u.update({ github_id: githubId });
+              // The provider has verified this email. If the existing account
+              // never verified it, someone else may have registered it: drop its
+              // password so only the provider sign-in gets in.
+              await u.update({
+                github_id: githubId,
+                ...(u.email_verified_at ? {} : { password_hash: null, email_verified_at: new Date(), password_changed_at: new Date() }),
+              });
               return done(null, { ...u.get({ plain: true }), type: u.type || 'user' });
             }
           }
@@ -141,7 +156,9 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
             password_hash: null,
             name: name || null,
             github_id: githubId,
+            email_verified_at: new Date(),
           });
+          await require('../auth/accounts').grantTrialCredits(u.id);
           return done(null, { ...u.get({ plain: true }), type: u.type || 'user' });
         } catch (err) {
           return done(err, null);

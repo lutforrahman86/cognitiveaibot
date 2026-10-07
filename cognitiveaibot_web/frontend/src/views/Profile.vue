@@ -3,6 +3,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { isAuthenticated } from '../api/auth'
 import { getProfile, updateProfile, uploadAvatar } from '../api/chat'
+import AccountControls from '../components/AccountControls.vue'
 
 const router = useRouter()
 const user = ref(null)
@@ -199,6 +200,7 @@ onMounted(async () => {
             {{ saving ? 'Saving...' : 'Save changes' }}
           </button>
         </form>
+        <AccountControls :email="user.email" :has-o-auth="Boolean(user.google_id || user.github_id || user.apple_id)" />
       </template>
     </div>
   </div>

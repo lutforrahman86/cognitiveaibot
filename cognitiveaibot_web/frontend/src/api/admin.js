@@ -114,3 +114,11 @@ export const getAdminRequests = (limit = 100) => send('GET', `/api/admin/request
 export const refundRequest = (id, reason) => send('POST', `/api/admin/requests/${id}/refund`, { reason }, 'Failed to refund')
 
 export const getAuditLog = (limit = 200) => send('GET', `/api/admin/audit?limit=${limit}`, undefined, 'Failed to load the audit log')
+
+export const getReports = (status = 'open') => send('GET', `/api/admin/reports?status=${status}`, undefined, 'Failed to load reports')
+
+export const reviewReport = (id, status) => send('PATCH', `/api/admin/reports/${id}`, { status }, 'Failed to update the report')
+
+export const getAlerts = (all = false) => send('GET', `/api/admin/alerts${all ? '?all=1' : ''}`, undefined, 'Failed to load alerts')
+
+export const resolveAlert = (id) => send('POST', `/api/admin/alerts/${id}/resolve`, {}, 'Failed to resolve the alert')

@@ -37,10 +37,13 @@ test('a fresh database is built entirely from migrations', async () => {
     [
       'SequelizeMeta',
       'admin_actions',
+      'admin_alerts',
       'ai_models',
       'api_keys',
+      'auth_tokens',
       'billing_events',
       'chats',
+      'content_reports',
       'credit_accounts',
       'credit_transactions',
       'media_jobs',

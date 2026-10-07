@@ -26,7 +26,7 @@ const rateLimit = require('../gateway/rateLimit');
 const openaiMedia = require('../gateway/openaiMedia');
 const mediaJobs = require('../gateway/mediaJobs');
 const { estimateTokens } = require('../gateway/metering');
-const { ApiError, sendError, invalid, admit } = require('./v1Common');
+const { ApiError, sendError, invalid, admit, moderate } = require('./v1Common');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 1 } });
@@ -126,6 +126,7 @@ router.post('/images/generations', route(async (req, res) => {
     throw invalid('response_format', 'Images are returned as b64_json.', 'unsupported_parameter');
   }
   const admitted = await admit(req, res, body.model, 'image');
+  await moderate(req, body.prompt, 'media');
 
   const perImage = IMAGE_TOKENS[quality === 'auto' ? 'high' : quality][size === 'auto' ? '1024x1536' : size];
   const hold = gateway.metering.tokenPrice(admitted.model, estimateTokens(body.prompt) + 50, perImage * n).priceMicros;
@@ -159,6 +160,7 @@ router.post('/audio/speech', route(async (req, res) => {
     throw invalid('speed', '`speed` must be a number from 0.25 to 4.');
   }
   const admitted = await admit(req, res, body.model, 'speech');
+  await moderate(req, body.input, 'chat');
   // Billed per character of input, known up front: the hold is the charge.
   const characters = [...body.input].length;
   const price = gateway.metering.unitPrice(admitted.model, characters);
@@ -219,6 +221,7 @@ router.post('/videos', route(async (req, res) => {
   const size = body.size ?? '720x1280';
   if (!VIDEO_SIZES.includes(size)) throw invalid('size', `\`size\` must be one of: ${VIDEO_SIZES.join(', ')}.`);
   const admitted = await admit(req, res, body.model, 'video');
+  await moderate(req, body.prompt, 'media');
   const job = await mediaJobs.startVideo({
     userId: admitted.userId,
     apiKeyId: req.apiKey.id,

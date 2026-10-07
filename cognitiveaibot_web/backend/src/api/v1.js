@@ -19,7 +19,7 @@ const AIModel = require('../models/AIModel');
 const gateway = require('../gateway');
 const rateLimit = require('../gateway/rateLimit');
 const keys = require('./keys');
-const { ApiError, errorBody, sendError, invalid, callableModel, admit } = require('./v1Common');
+const { ApiError, errorBody, sendError, invalid, callableModel, admit, moderate } = require('./v1Common');
 const media = require('./v1Media');
 
 // ---------------------------------------------------------------------------
@@ -189,6 +189,8 @@ router.post('/chat/completions', async (req, res) => {
     messages = normalizeMessages(body.messages);
     ({ options, maxTokens } = parseOptions(body));
     ({ model, prepared } = await admit(req, res, body.model, 'chat'));
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+    await moderate(req, lastUser?.content, 'chat');
 
     meter = await gateway.metering.start({
       userId,

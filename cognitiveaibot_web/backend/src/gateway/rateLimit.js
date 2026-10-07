@@ -106,9 +106,25 @@ async function addTokens(userId, tokens) {
   }
 }
 
+/**
+ * Counts one occurrence of an action (e.g. sign-ups from one IP address)
+ * in a window of `windowSeconds`; false once `max` is exceeded. Fails open
+ * if the counter store is unreachable.
+ */
+async function allowAction(key, max, windowSeconds) {
+  const windowMs = windowSeconds * 1000;
+  const slot = Math.floor(Date.now() / windowMs);
+  try {
+    return (await getStore().incrBy(`rl:act:${key}:${slot}`, 1, windowMs * 2)) <= max;
+  } catch (err) {
+    console.error('[rate-limit] action limit skipped:', err.message);
+    return true;
+  }
+}
+
 /** Clears every counter. For tests. */
 async function resetLimits() {
   await getStore().reset();
 }
 
-module.exports = { checkRequest, addTokens, resetLimits };
+module.exports = { checkRequest, addTokens, allowAction, resetLimits };

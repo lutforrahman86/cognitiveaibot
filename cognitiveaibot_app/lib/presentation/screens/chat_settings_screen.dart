@@ -11,6 +11,8 @@ import '../providers/auth_provider.dart';
 import '../providers/chat_providers.dart';
 import '../providers/chat_session_provider.dart';
 import '../providers/providers.dart';
+import '../widgets/account_actions.dart';
+import '../widgets/legal_links.dart';
 import 'main_shell.dart';
 import 'plans_screen.dart';
 
@@ -52,6 +54,21 @@ class ChatSettingsScreen extends ConsumerWidget {
                       title: Text(user?.displayName ?? '', style: const TextStyle(fontWeight: FontWeight.w600)),
                       subtitle: Text(user?.email ?? '', style: const TextStyle(color: CognitiveAIBotTheme.textSecondary)),
                     ),
+                    ListTile(
+                      key: const Key('settings-change-password'),
+                      leading: const Icon(Icons.lock_reset_outlined),
+                      title: const Text('Change password'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => showChangePasswordDialog(context),
+                    ),
+                    ListTile(
+                      key: const Key('settings-export'),
+                      leading: const Icon(Icons.download_outlined),
+                      title: const Text('Download my data'),
+                      subtitle: const Text('Your chats, settings and usage as a JSON file',
+                          style: TextStyle(color: CognitiveAIBotTheme.textSecondary)),
+                      onTap: () => downloadMyData(context, ref),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -80,6 +97,20 @@ class ChatSettingsScreen extends ConsumerWidget {
                   data: (s) => _SettingsForm(settings: s),
                 ),
                 const SizedBox(height: 24),
+                const _SectionHeader('LEGAL'),
+                _Card(
+                  children: [
+                    for (final page in LegalPage.values)
+                      ListTile(
+                        key: Key('settings-legal-${page.name}'),
+                        leading: Icon(page.icon),
+                        title: Text(page.title),
+                        trailing: const Icon(Icons.open_in_new, size: 18),
+                        onTap: () => openLegalPage(context, ref, page),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 24),
                 const _SectionHeader('DATA'),
                 _Card(
                   children: [
@@ -93,6 +124,14 @@ class ChatSettingsScreen extends ConsumerWidget {
                       leading: const Icon(Icons.logout, color: Colors.redAccent),
                       title: const Text('Log Out', style: TextStyle(color: Colors.redAccent)),
                       onTap: () => confirmSignOut(context, ref),
+                    ),
+                    ListTile(
+                      key: const Key('settings-delete-account'),
+                      leading: const Icon(Icons.person_remove_outlined, color: Colors.redAccent),
+                      title: const Text('Delete account', style: TextStyle(color: Colors.redAccent)),
+                      subtitle: const Text('Deletes your account and all its data',
+                          style: TextStyle(color: CognitiveAIBotTheme.textSecondary)),
+                      onTap: () => showDeleteAccountDialog(context),
                     ),
                   ],
                 ),

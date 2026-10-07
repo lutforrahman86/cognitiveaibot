@@ -4,6 +4,13 @@ const AIModel = require('../models/AIModel');
 const gateway = require('../gateway');
 const { modelTierFor, requireTier } = require('../billing/service');
 const { UserSettings } = require('../models/UserSettings');
+const { allowAction } = require('../gateway/rateLimit');
+const { checkPrompt } = require('../gateway/moderation');
+const { raiseAlert } = require('../admin/alerts');
+
+// Messages a user may send in the app per minute (roadmap E4). The developer
+// API has per-plan limits instead.
+const appMessagesPerMinute = () => Number(process.env.APP_MESSAGES_PER_MINUTE) || 20;
 
 const MAX_MESSAGE_CHARS = 32000;
 // Earlier turns sent as context, newest first until either limit is hit.
@@ -100,6 +107,20 @@ async function create(req, res) {
     requireTier(model, await modelTierFor(userId));
   } catch (err) {
     return sendError(res, err);
+  }
+
+  if (!regenerate) {
+    try {
+      await checkPrompt(text, 'chat', {
+        onSerious: (categories) =>
+          raiseAlert('moderation_minors', userId, { source: 'chat', categories }, `minors:${userId}:${Date.now()}`),
+      });
+    } catch (err) {
+      return sendError(res, err);
+    }
+  }
+  if (!(await allowAction(`chat:${userId}`, appMessagesPerMinute(), 60))) {
+    return res.status(429).json({ error: 'You’re sending messages very fast. Wait a moment.', code: 'TOO_MANY_MESSAGES' });
   }
 
   if (activeReplies.has(userId)) {

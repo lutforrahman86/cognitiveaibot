@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/error/error_messages.dart';
 import '../../core/error/failures.dart';
 import '../../core/usecases/usecase.dart';
 import '../../domain/entities/account.dart';
@@ -59,5 +60,6 @@ class SettingsController extends AsyncNotifier<UserSettings> {
 final settingsProvider = AsyncNotifierProvider<SettingsController, UserSettings>(SettingsController.new);
 
 /// User-facing text for a provider error.
-String errorText(Object error) =>
-    error is Failure ? (error.message ?? 'Something went wrong.') : 'Something went wrong.';
+String errorText(Object error) => error is Failure
+    ? errorMessageFor(error.code, error.message, fallback: 'Something went wrong.')
+    : 'Something went wrong.';

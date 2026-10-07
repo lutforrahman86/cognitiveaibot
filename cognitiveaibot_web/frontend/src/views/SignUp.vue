@@ -21,8 +21,8 @@ async function handleSubmit() {
     error.value = 'Email and password are required'
     return
   }
-  if (form.password.length < 6) {
-    error.value = 'Password must be at least 6 characters'
+  if (form.password.length < 8) {
+    error.value = 'Password must be at least 8 characters'
     return
   }
   loading.value = true
@@ -84,11 +84,16 @@ function signUpWithGithub() {
         </div>
         <div class="field">
           <label for="password">Password</label>
-          <input id="password" v-model="form.password" type="password" placeholder="••••••••" required minlength="6" autocomplete="new-password" />
+          <input id="password" v-model="form.password" type="password" placeholder="••••••••" required minlength="8" autocomplete="new-password" />
         </div>
         <button type="submit" class="btn btn-primary btn-block" :disabled="loading">
           {{ loading ? 'Creating account...' : 'Create account' }}
         </button>
+        <p class="legal-note">
+          By creating an account you agree to the <router-link to="/terms">Terms</router-link>,
+          <router-link to="/acceptable-use">Acceptable Use Policy</router-link> and
+          <router-link to="/privacy">Privacy Policy</router-link>.
+        </p>
       </form>
       <p class="signin-footer">
         Already have an account?
@@ -195,6 +200,9 @@ function signUpWithGithub() {
   opacity: 0.7;
   cursor: not-allowed;
 }
+
+.legal-note { margin-top: 0.75rem; font-size: 0.8125rem; color: #94a3b8; line-height: 1.5; text-align: center; }
+.legal-note a { color: #a5b4fc; }
 
 .signin-footer {
   text-align: center;

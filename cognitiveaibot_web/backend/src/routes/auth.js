@@ -4,6 +4,19 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { authMiddleware } = require('../middleware/auth');
 const { passport, frontendUrl } = require('../config/passport');
+const accounts = require('../auth/accounts');
+const { allowAction } = require('../gateway/rateLimit');
+const { GatewayError } = require('../gateway/errors');
+
+// Abuse limits per IP address (roadmap E4), per hour.
+const signupsPerIp = () => Number(process.env.SIGNUPS_PER_IP_PER_HOUR) || 5;
+const resetsPerIp = () => Number(process.env.RESETS_PER_IP_PER_HOUR) || 10;
+
+function sendAccountError(res, err, label) {
+  if (err instanceof GatewayError) return res.status(err.status).json({ error: err.message, code: err.code });
+  console.error(`${label}:`, err);
+  return res.status(500).json({ error: `Couldn’t ${label}. Try again.` });
+}
 
 const router = express.Router();
 
@@ -67,7 +80,7 @@ function validateEmail(email) {
 }
 
 function validatePassword(password) {
-  return password && password.length >= 6;
+  return typeof password === 'string' && password.length >= accounts.MIN_PASSWORD && password.length <= 200;
 }
 
 /**
@@ -88,8 +101,13 @@ router.post('/register', async (req, res) => {
 
     if (!validatePassword(password)) {
       return res.status(400).json({
-        error: 'Password must be at least 6 characters',
+        error: `Password must be at least ${accounts.MIN_PASSWORD} characters`,
+        code: 'WEAK_PASSWORD',
       });
+    }
+
+    if (!(await allowAction(`signup:${req.ip}`, signupsPerIp(), 3600))) {
+      return res.status(429).json({ error: 'Too many sign-ups from this network. Try again later.', code: 'TOO_MANY_SIGNUPS' });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -99,11 +117,9 @@ router.post('/register', async (req, res) => {
       password_hash: passwordHash,
       name: name?.trim() || null,
     });
-    const token = jwt.sign(
-      { userId: user.id },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    const token = createToken(user);
+    // Trial credits arrive once the emailed link is followed.
+    accounts.sendVerification(user.id).catch((err) => console.error('verification email:', err.message));
 
     res.status(201).json({
       user: {
@@ -112,6 +128,7 @@ router.post('/register', async (req, res) => {
         name: user.name,
         type: user.type || 'user',
         createdAt: user.created_at,
+        email_verified: false,
       },
       token,
     });
@@ -145,6 +162,7 @@ router.post('/login', (req, res, next) => {
         name: user.name,
         type: user.type || 'user',
         createdAt: user.created_at,
+        email_verified: Boolean(user.email_verified_at),
       },
       token,
     });
@@ -164,8 +182,54 @@ router.get('/me', authMiddleware, (req, res) => {
       avatar_url: req.user.avatar_url,
       type: req.user.type || 'user',
       createdAt: req.user.created_at,
+      email_verified: Boolean(req.user.email_verified_at),
     },
   });
+});
+
+/** POST /api/auth/forgot-password { email } — emails a reset link if the account exists (always 200). */
+router.post('/forgot-password', async (req, res) => {
+  try {
+    if (await allowAction(`reset:${req.ip}`, resetsPerIp(), 3600)) {
+      await accounts.requestPasswordReset(req.body?.email);
+    }
+    res.json({ ok: true, message: 'If an account uses that email, a reset link is on its way.' });
+  } catch (err) {
+    sendAccountError(res, err, 'send the reset email');
+  }
+});
+
+/** POST /api/auth/reset-password { token, password } */
+router.post('/reset-password', async (req, res) => {
+  try {
+    await accounts.resetPassword(req.body?.token, req.body?.password);
+    res.json({ ok: true });
+  } catch (err) {
+    sendAccountError(res, err, 'reset the password');
+  }
+});
+
+/** POST /api/auth/verify-email { token } */
+router.post('/verify-email', async (req, res) => {
+  try {
+    await accounts.verifyEmail(req.body?.token);
+    res.json({ ok: true });
+  } catch (err) {
+    sendAccountError(res, err, 'confirm the email');
+  }
+});
+
+/** POST /api/auth/resend-verification — a new confirmation link for the signed-in user. */
+router.post('/resend-verification', authMiddleware, async (req, res) => {
+  try {
+    if (!(await allowAction(`verify:${req.user.id}`, 5, 3600))) {
+      return res.status(429).json({ error: 'Too many emails. Try again in an hour.', code: 'TOO_MANY_EMAILS' });
+    }
+    const sent = await accounts.sendVerification(req.user.id);
+    res.json({ ok: true, already_verified: !sent });
+  } catch (err) {
+    sendAccountError(res, err, 'send the confirmation email');
+  }
 });
 
 module.exports = router;

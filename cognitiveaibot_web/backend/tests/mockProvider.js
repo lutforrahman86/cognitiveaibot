@@ -106,6 +106,14 @@ function handleMedia(req, res, request, mock) {
   };
   const { status = 200 } = mock.reply;
   const path = req.url.replace(/^\/v1/, '');
+  // Moderation: `mock.moderation` lists the categories to flag, or is
+  // { status } to fail.
+  if (req.method === 'POST' && path === '/moderations') {
+    const m = mock.moderation || [];
+    if (!Array.isArray(m)) return json(m.status, { error: { message: 'mock moderation failure' } });
+    const categories = Object.fromEntries(['sexual', 'sexual/minors', 'violence', 'violence/graphic', 'hate', 'hate/threatening', 'self-harm/instructions', 'illicit/violent'].map((c) => [c, m.includes(c)]));
+    return json(200, { id: 'modr-mock', model: request.body.model, results: [{ flagged: m.length > 0, categories }] });
+  }
   const isMedia = /^\/(embeddings|images\/generations|audio\/speech|audio\/transcriptions|videos)/.test(path);
   if (!isMedia) return false;
   if (status !== 200) return json(status, { error: { message: 'mock upstream error' } });

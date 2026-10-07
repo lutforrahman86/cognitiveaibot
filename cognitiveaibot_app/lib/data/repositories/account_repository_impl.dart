@@ -23,4 +23,7 @@ class AccountRepositoryImpl implements AccountRepository {
   @override
   Future<Result<UserSettings>> updateSettings(UserSettings previous, UserSettings next) =>
       Result.guard(() => _remote.updateSettings(previous, next));
+
+  @override
+  Future<Result<String>> exportData() => Result.guard(_remote.exportData);
 }

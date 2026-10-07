@@ -9,6 +9,22 @@ abstract interface class AuthRemoteDataSource {
 
   /// `GET /api/auth/me` with the current session token.
   Future<AppUserModel> me();
+
+  /// `POST /api/auth/forgot-password`. The server always answers 200, so it
+  /// can't be used to find out which emails have accounts.
+  Future<void> forgotPassword(String email);
+
+  /// `POST /api/auth/resend-verification`. True when the email was already
+  /// confirmed (nothing was sent).
+  Future<bool> resendVerification();
+
+  /// `POST /api/users/me/password`. Returns the new session token: the old
+  /// one stops working.
+  Future<String> changePassword({required String currentPassword, required String newPassword});
+
+  /// `DELETE /api/users/me`. [confirm] is the password, or the account's
+  /// email for accounts without one (Google/GitHub sign-in).
+  Future<void> deleteAccount(String confirm);
 }
 
 class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
@@ -40,5 +56,28 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   Future<AppUserModel> me() async {
     final json = readMap(await _api.get('/api/auth/me'));
     return AppUserModel.fromJson(readMap(json['user']));
+  }
+
+  @override
+  Future<void> forgotPassword(String email) async {
+    await _api.post('/api/auth/forgot-password', body: {'email': email}, auth: false);
+  }
+
+  @override
+  Future<bool> resendVerification() async =>
+      readBool(readMap(await _api.post('/api/auth/resend-verification', body: const {}))['already_verified']);
+
+  @override
+  Future<String> changePassword({required String currentPassword, required String newPassword}) async {
+    final json = readMap(await _api.post(
+      '/api/users/me/password',
+      body: {'current_password': currentPassword, 'new_password': newPassword},
+    ));
+    return readString(json['token']) ?? '';
+  }
+
+  @override
+  Future<void> deleteAccount(String confirm) async {
+    await _api.delete('/api/users/me', body: {'confirm': confirm});
   }
 }

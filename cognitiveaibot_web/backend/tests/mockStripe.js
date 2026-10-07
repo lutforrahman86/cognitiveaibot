@@ -23,6 +23,10 @@ async function startMockStripe() {
       if (req.method === 'POST' && req.url === '/v1/customers') {
         return json(200, { id: `cus_test_${counter}`, object: 'customer', email: body.email });
       }
+      const deleted = req.url.match(/^\/v1\/customers\/([^/?]+)$/);
+      if (req.method === 'DELETE' && deleted) {
+        return json(200, { id: deleted[1], object: 'customer', deleted: true });
+      }
       if (req.method === 'POST' && req.url === '/v1/checkout/sessions') {
         const id = `cs_test_${counter}`;
         return json(200, { id, object: 'checkout.session', url: `https://checkout.stripe.test/${id}` });

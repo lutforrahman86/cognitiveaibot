@@ -3,7 +3,9 @@ import 'package:http/http.dart' as http;
 
 import '../../core/config/app_config.dart';
 import '../../core/network/api_client.dart';
+import '../../core/storage/export_saver.dart';
 import '../../core/storage/token_store.dart';
+import '../../core/utils/link_opener.dart';
 import '../../data/datasources/account_remote_datasource.dart';
 import '../../data/datasources/auth_remote_datasource.dart';
 import '../../data/datasources/chat_remote_datasource.dart';
@@ -21,6 +23,7 @@ import '../../domain/usecases/delete_conversation.dart';
 import '../../domain/usecases/get_chat_messages.dart';
 import '../../domain/usecases/get_conversations.dart';
 import '../../domain/usecases/get_models.dart';
+import '../../domain/usecases/report_message.dart';
 import '../../domain/usecases/stream_chat_reply.dart';
 import '../../domain/usecases/update_conversation_title.dart';
 
@@ -34,6 +37,12 @@ final httpClientProvider = Provider<http.Client>((ref) {
 final tokenStoreProvider = Provider<TokenStore>((ref) => SecureTokenStore());
 
 final sessionHolderProvider = Provider<SessionHolder>((ref) => SessionHolder());
+
+/// Where "Download my data" saves the file. Tests override it.
+final exportSaverProvider = Provider<ExportSaver>((ref) => const FileExportSaver());
+
+/// Opens web pages (the legal pages) in the browser. Tests override it.
+final linkOpenerProvider = Provider<LinkOpener>((ref) => openInBrowser);
 
 final apiClientProvider = Provider<ApiClient>((ref) {
   return ApiClient(
@@ -112,3 +121,13 @@ final getUsageDashboardProvider = Provider<GetUsageDashboard>((ref) {
 });
 final getSettingsProvider = Provider<GetSettings>((ref) => GetSettings(ref.watch(accountRepositoryProvider)));
 final updateSettingsProvider = Provider<UpdateSettings>((ref) => UpdateSettings(ref.watch(accountRepositoryProvider)));
+
+final refreshUserProvider = Provider<RefreshUser>((ref) => RefreshUser(ref.watch(authRepositoryProvider)));
+final forgotPasswordProvider = Provider<ForgotPassword>((ref) => ForgotPassword(ref.watch(authRepositoryProvider)));
+final resendVerificationProvider = Provider<ResendVerification>((ref) {
+  return ResendVerification(ref.watch(authRepositoryProvider));
+});
+final changePasswordProvider = Provider<ChangePassword>((ref) => ChangePassword(ref.watch(authRepositoryProvider)));
+final deleteAccountProvider = Provider<DeleteAccount>((ref) => DeleteAccount(ref.watch(authRepositoryProvider)));
+final exportDataProvider = Provider<ExportData>((ref) => ExportData(ref.watch(accountRepositoryProvider)));
+final reportMessageProvider = Provider<ReportMessage>((ref) => ReportMessage(ref.watch(chatRepositoryProvider)));

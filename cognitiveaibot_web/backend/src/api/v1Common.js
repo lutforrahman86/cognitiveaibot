@@ -7,6 +7,8 @@ const gateway = require('../gateway');
 const rateLimit = require('../gateway/rateLimit');
 const { requireTier } = require('../billing/service');
 const keys = require('./keys');
+const { checkPrompt } = require('../gateway/moderation');
+const { raiseAlert } = require('../admin/alerts');
 
 const ERROR_TYPES = {
   400: 'invalid_request_error',
@@ -104,4 +106,13 @@ async function admit(req, res, modelName, kind) {
   return { model, prepared, access, userId };
 }
 
-module.exports = { ApiError, errorBody, sendError, invalid, setRateLimitHeaders, callableModel, admit, ENDPOINTS };
+/** Moderates a prompt sent through the API (see gateway/moderation.js). */
+function moderate(req, text, policy) {
+  const userId = req.apiKey.user_id;
+  return checkPrompt(text, policy, {
+    onSerious: (categories) =>
+      raiseAlert('moderation_minors', userId, { source: `api ${policy}`, categories }, `minors:${userId}:${Date.now()}`),
+  });
+}
+
+module.exports = { moderate, ApiError, errorBody, sendError, invalid, setRateLimitHeaders, callableModel, admit, ENDPOINTS };

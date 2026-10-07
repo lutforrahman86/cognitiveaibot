@@ -1,8 +1,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { isAuthenticated } from '../api/auth'
-import { getModels, getChats, getChat, createChat, deleteChat, streamCompletion, getProfile, getBilling, getSettings } from '../api/chat'
+import { isAuthenticated, getMe, resendVerification } from '../api/auth'
+import { getModels, getChats, getChat, createChat, deleteChat, streamCompletion, getProfile, getBilling, getSettings, reportMessage } from '../api/chat'
 import { renderMarkdown } from '../utils/markdown'
 import { checkIsAdmin } from '../api/admin'
 
@@ -32,6 +32,43 @@ const errorText = ref('')
 const upgradeHint = ref(null)
 const settings = ref({ enter_to_send: true, show_timestamps: true, font_size: 'medium' })
 const copiedIndex = ref(null)
+// Unconfirmed email: a banner offers to resend the confirmation link.
+const emailUnverified = ref(false)
+const verifyNotice = ref('')
+// The report form, open under one reply at a time.
+const reportFor = ref(null)
+const reportReason = ref('harmful')
+const reportDetails = ref('')
+const reportState = ref('')
+const REPORT_REASONS = { harmful: 'Harmful or dangerous', sexual: 'Sexual', hateful: 'Hateful', violent: 'Violent', illegal: 'Illegal', inaccurate: 'Wrong or misleading', other: 'Something else' }
+
+async function resendConfirmation() {
+  try {
+    const res = await resendVerification()
+    verifyNotice.value = res.already_verified ? 'Your email is already confirmed.' : 'Sent. Check your inbox (and spam folder).'
+    if (res.already_verified) emailUnverified.value = false
+  } catch (err) {
+    verifyNotice.value = err.message
+  }
+}
+
+function openReport(msg) {
+  reportFor.value = msg.id
+  reportReason.value = 'harmful'
+  reportDetails.value = ''
+  reportState.value = ''
+}
+
+async function sendReport() {
+  reportState.value = 'sending'
+  try {
+    await reportMessage(reportFor.value, reportReason.value, reportDetails.value)
+    reportState.value = 'sent'
+    setTimeout(() => (reportFor.value = null), 1800)
+  } catch (err) {
+    reportState.value = err.message
+  }
+}
 // The highest model tier the user's plan unlocks (0 without a plan).
 const userTier = computed(() => billing.value?.plan?.model_tier || 0)
 const lastAssistantIndex = computed(() => messages.value.map((m) => m.role).lastIndexOf('assistant'))
@@ -70,7 +107,8 @@ onMounted(async () => {
     router.push('/signin')
     return
   }
-  const [profileRes, billingRes, settingsRes] = await Promise.all([getProfile(), getBilling(), getSettings()])
+  const [profileRes, billingRes, settingsRes, me] = await Promise.all([getProfile(), getBilling(), getSettings(), getMe()])
+  emailUnverified.value = me?.email_verified === false
   if (settingsRes) settings.value = settingsRes
   user.value = profileRes
   billing.value = billingRes
@@ -229,7 +267,7 @@ async function sendMessage() {
             live().content += event.text
           } else if (event.type === 'done' || event.type === 'error') {
             if (event.credits) credits.value = event.credits.balance
-            if (event.message) live().created_at = event.message.created_at
+            if (event.message) Object.assign(live(), { id: event.message.id, created_at: event.message.created_at })
             if (event.type === 'error') errorText.value = event.error
           }
         },
@@ -287,7 +325,7 @@ async function regenerate() {
           else if (event.type === 'delta') live().content += event.text
           else if (event.type === 'done' || event.type === 'error') {
             if (event.credits) credits.value = event.credits.balance
-            if (event.message) live().created_at = event.message.created_at
+            if (event.message) Object.assign(live(), { id: event.message.id, created_at: event.message.created_at })
             if (event.type === 'error') errorText.value = event.error
           }
         },
@@ -499,6 +537,12 @@ function clearRecordedVoice() {
         </div>
       </header>
 
+      <div v-if="emailUnverified" class="verify-banner" role="status">
+        <span>Confirm your email to get your trial credits and to buy credits. We sent you a link.</span>
+        <button type="button" class="message-action" @click="resendConfirmation">Resend email</button>
+        <span v-if="verifyNotice" class="verify-notice">{{ verifyNotice }}</span>
+      </div>
+
       <div class="messages-area" :class="`font-${settings.font_size || 'medium'}`">
         <div v-if="!currentChat && messages.length === 0" class="welcome">
           <h2>Start a conversation</h2>
@@ -531,6 +575,7 @@ function clearRecordedVoice() {
                 <button type="button" class="message-action" @click="copyMessage(msg, i)">
                   {{ copiedIndex === i ? 'Copied' : 'Copy' }}
                 </button>
+                <button v-if="msg.id" type="button" class="message-action" @click="openReport(msg)">Report</button>
                 <button
                   v-if="i === lastAssistantIndex && currentChat"
                   type="button"
@@ -542,6 +587,20 @@ function clearRecordedVoice() {
                 </button>
               </template>
             </div>
+            <form v-if="reportFor && reportFor === msg.id" class="report-form" @submit.prevent="sendReport">
+              <template v-if="reportState === 'sent'">
+                <span class="verify-notice">Thanks. The report was sent for review.</span>
+              </template>
+              <template v-else>
+                <select v-model="reportReason" aria-label="Reason">
+                  <option v-for="(label, key) in REPORT_REASONS" :key="key" :value="key">{{ label }}</option>
+                </select>
+                <input v-model="reportDetails" maxlength="2000" placeholder="What’s wrong? (optional)" />
+                <button type="submit" class="message-action" :disabled="reportState === 'sending'">Send report</button>
+                <button type="button" class="message-action" @click="reportFor = null">Cancel</button>
+                <span v-if="reportState && reportState !== 'sending'" class="report-error">{{ reportState }}</span>
+              </template>
+            </form>
           </div>
           </div>
         </template>
@@ -641,7 +700,10 @@ function clearRecordedVoice() {
         <p v-else-if="!models.some((m) => m.available)" class="input-error">
           No AI models are connected yet.
         </p>
-        <p v-else class="input-hint">Press Enter to send, Shift+Enter for a new line.</p>
+        <p v-else class="input-hint">
+          {{ settings.enter_to_send === false ? 'Enter adds a new line; send with the button.' : 'Press Enter to send, Shift+Enter for a new line.' }}
+          AI can make mistakes: check important facts.
+        </p>
       </div>
     </main>
   </div>
@@ -1132,6 +1194,40 @@ function clearRecordedVoice() {
 }
 .message-action:hover:not(:disabled) { color: #c9d1d9; background: rgba(110, 118, 129, 0.15); }
 .message-action:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.verify-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 1rem;
+  background: rgba(245, 158, 11, 0.1);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.3);
+  color: #fcd34d;
+  font-size: 0.8125rem;
+}
+.verify-notice { color: #c9d1d9; font-size: 0.8125rem; }
+.report-form {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+}
+.report-form select, .report-form input {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #c9d1d9;
+  font: inherit;
+  padding: 0.3rem 0.45rem;
+}
+.report-form input { flex: 1; min-width: 10rem; }
+.report-error { color: #f85149; }
 
 .messages-area.font-small .message-text { font-size: 0.8125rem; }
 .messages-area.font-large .message-text { font-size: 1.0625rem; }

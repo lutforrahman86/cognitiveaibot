@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/cognitive_aibot_theme.dart';
+import '../../domain/usecases/auth_usecases.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/legal_links.dart';
+import 'forgot_password_screen.dart';
 
 /// Email and password sign-in / sign-up. (Google and GitHub sign-in are on
 /// the web app only for now.)
@@ -61,6 +64,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(authControllerProvider);
     final notice = _error ?? state.notice ?? state.restoreError;
+    final info = _error == null ? state.info : null;
     return Scaffold(
       backgroundColor: CognitiveAIBotTheme.background,
       body: SafeArea(
@@ -115,7 +119,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                       autofillHints: [_signUp ? AutofillHints.newPassword : AutofillHints.password],
                       onSubmitted: (_) => _submit(),
                       decoration: _decoration(
-                        _signUp ? 'Password (at least 6 characters)' : 'Password',
+                        _signUp ? 'Password (at least $minPasswordLength characters)' : 'Password',
                         Icons.lock_outline,
                         suffix: IconButton(
                           tooltip: _obscure ? 'Show password' : 'Hide password',
@@ -124,6 +128,31 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         ),
                       ),
                     ),
+                    if (!_signUp)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          key: const Key('forgot-password'),
+                          onPressed: _busy
+                              ? null
+                              : () => Navigator.of(context).push(MaterialPageRoute<void>(
+                                    builder: (_) => ForgotPasswordScreen(initialEmail: _email.text),
+                                  )),
+                          child: const Text('Forgot password?'),
+                        ),
+                      ),
+                    if (info != null) ...[
+                      const SizedBox(height: 14),
+                      Container(
+                        key: const Key('auth-info'),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: CognitiveAIBotTheme.cardBackground,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(info, style: const TextStyle(fontSize: 13, color: CognitiveAIBotTheme.textPrimary, height: 1.4)),
+                      ),
+                    ],
                     if (notice != null) ...[
                       const SizedBox(height: 14),
                       Text(
@@ -148,6 +177,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                           : Text(_signUp ? 'Create account' : 'Sign in'),
                     ),
+                    if (_signUp) ...[
+                      const SizedBox(height: 12),
+                      const SignUpAgreement(),
+                    ],
                     const SizedBox(height: 12),
                     TextButton(
                       key: const Key('auth-toggle'),

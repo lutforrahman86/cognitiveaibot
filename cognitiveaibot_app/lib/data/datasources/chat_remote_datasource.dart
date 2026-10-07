@@ -1,4 +1,5 @@
 import '../../domain/entities/completion_event.dart';
+import '../../domain/entities/content_report.dart';
 import '../models/ai_model_model.dart';
 import '../models/chat_message_model.dart';
 import '../models/conversation_model.dart';
@@ -24,4 +25,7 @@ abstract interface class ChatRemoteDataSource {
     bool regenerate = false,
     Future<void>? abortTrigger,
   });
+
+  /// `POST /api/reports`: flags a saved reply for review.
+  Future<void> reportMessage({required String messageId, required ReportReason reason, String? details});
 }

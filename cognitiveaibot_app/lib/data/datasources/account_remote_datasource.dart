@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../../core/network/api_client.dart';
 import '../../domain/entities/account.dart';
 import '../models/account_models.dart';
@@ -10,6 +12,10 @@ abstract interface class AccountRemoteDataSource {
   Future<UserSettings> getSettings();
   /// Sends only the fields that differ between [previous] and [next].
   Future<UserSettings> updateSettings(UserSettings previous, UserSettings next);
+
+  /// `GET /api/users/me/export`: everything the service holds about the
+  /// account, as indented JSON text.
+  Future<String> exportData();
 }
 
 class AccountRemoteDataSourceImpl implements AccountRemoteDataSource {
@@ -38,4 +44,8 @@ class AccountRemoteDataSourceImpl implements AccountRemoteDataSource {
     if (patch.isEmpty) return next;
     return settingsFromJson(readMap(readMap(await _api.patch('/api/settings', body: patch))['settings']));
   }
+
+  @override
+  Future<String> exportData() async =>
+      const JsonEncoder.withIndent('  ').convert(await _api.get('/api/users/me/export'));
 }

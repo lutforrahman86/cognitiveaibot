@@ -46,6 +46,8 @@ const User = sequelize.define(
       defaultValue: 'user',
     },
     suspended_at: { type: DataTypes.DATE, allowNull: true },
+    email_verified_at: { type: DataTypes.DATE, allowNull: true },
+    password_changed_at: { type: DataTypes.DATE, allowNull: true },
     suspended_reason: { type: DataTypes.TEXT, allowNull: true },
   },
   {

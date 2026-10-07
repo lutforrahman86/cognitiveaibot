@@ -5,6 +5,7 @@ import '../../core/usecases/usecase.dart';
 import '../../domain/entities/ai_model.dart';
 import '../../domain/entities/chat_message.dart';
 import '../../domain/entities/completion_event.dart';
+import '../../domain/entities/content_report.dart';
 import '../../domain/entities/conversation.dart';
 import '../../domain/repositories/chat_repository.dart';
 import '../datasources/chat_remote_datasource.dart';
@@ -36,6 +37,10 @@ class ChatRepositoryImpl implements ChatRepository {
   @override
   Future<Result<void>> deleteConversation(String conversationId) =>
       Result.guard(() => _remote.deleteConversation(conversationId));
+
+  @override
+  Future<Result<void>> reportMessage({required String messageId, required ReportReason reason, String? details}) =>
+      Result.guard(() => _remote.reportMessage(messageId: messageId, reason: reason, details: details));
 
   @override
   Stream<CompletionEvent> streamReply({

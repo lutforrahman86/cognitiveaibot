@@ -59,6 +59,7 @@ async function listKeys(userId) {
 /** Creates a key and returns it in full. This is the only time it can be seen. */
 async function createKey(userId, name) {
   if (!(await apiAccess(userId))) throw requireAccessError();
+  await require('../auth/accounts').requireVerified(userId);
   const label = typeof name === 'string' ? name.trim().slice(0, 100) : '';
   if (!label) throw new GatewayError('NAME_REQUIRED', 'Give the key a name, such as where it will be used.', { status: 400 });
 
