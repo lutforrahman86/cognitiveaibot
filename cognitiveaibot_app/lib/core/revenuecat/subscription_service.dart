@@ -1,15 +1,16 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
 import 'revenuecat_config.dart';
 
-/// Handles RevenueCat initialization, purchases, and entitlement checking.
+/// RevenueCat on iOS (and Android): configuration, identifying the user and
+/// buying a plan's product.
 ///
-/// Best practices:
-/// - Initialize before runApp in main()
-/// - Use [isProEntitled] for feature gating
-/// - Use [customerInfo] for subscription status and purchase history
-/// - Call [restorePurchases] when user taps "Restore"
+/// The contract with the backend: after sign-in the app calls
+/// `Purchases.logIn(<our user id>)`, so RevenueCat's webhook reports
+/// purchases with `app_user_id` = our user id and the server credits the
+/// right account. The app never grants credits itself.
 class SubscriptionService {
   SubscriptionService._();
 
@@ -18,36 +19,21 @@ class SubscriptionService {
 
   bool _initialized = false;
 
-  /// Whether RevenueCat has been configured. Call [initialize] in main().
+  /// Whether RevenueCat is configured, i.e. in-app purchases are on.
   bool get isInitialized => _initialized;
 
-  /// Initialize RevenueCat. Call once at app startup, before [runApp].
-  ///
-  /// [appUserId] - Optional. Set for logged-in users to sync subscriptions.
-  /// [observerMode] - Set true if you handle purchases outside RevenueCat.
-  static Future<void> initialize({
-    String? appUserId,
-  }) async {
+  /// Configure RevenueCat. Call once at app startup, before [runApp].
+  static Future<void> initialize() async {
     if (instance._initialized) return;
     if (!RevenueCatConfig.isConfigured) {
-      debugPrint('[RevenueCat] No API key for this build: purchases are disabled. '
-          'See revenuecat_config.dart.');
+      debugPrint('[RevenueCat] No API key for this platform/build: in-app purchases are off.');
       return;
     }
-
     try {
       await Purchases.setLogLevel(kDebugMode ? LogLevel.debug : LogLevel.warn);
-      final configuration = PurchasesConfiguration(RevenueCatConfig.apiKey);
-
-      if (appUserId != null && appUserId.isNotEmpty) {
-        await Purchases.configure(configuration);
-        await Purchases.logIn(appUserId);
-      } else {
-        await Purchases.configure(configuration);
-      }
-
+      await Purchases.configure(PurchasesConfiguration(RevenueCatConfig.apiKey));
       instance._initialized = true;
-      debugPrint('[RevenueCat] Initialized successfully');
+      debugPrint('[RevenueCat] Initialized');
     } catch (e) {
       // A billing problem must not stop the app from starting; purchases
       // simply stay unavailable.
@@ -55,54 +41,57 @@ class SubscriptionService {
     }
   }
 
-  /// Check if the user has the Pro entitlement (active subscription or lifetime).
-  Future<bool> isProEntitled() async {
-    if (!_initialized) return false;
+  /// Identifies the signed-in user to RevenueCat (`app_user_id` = our user id).
+  Future<void> logIn(String userId) async {
+    if (!_initialized || userId.isEmpty) return;
     try {
-      final info = await Purchases.getCustomerInfo();
-      return info.entitlements
-          .all[RevenueCatConfig.proEntitlementId]
-          ?.isActive ?? false;
+      await Purchases.logIn(userId);
     } catch (e) {
-      debugPrint('[RevenueCat] Entitlement check error: $e');
-      return false;
+      debugPrint('[RevenueCat] logIn failed: $e');
     }
   }
 
-  /// Get current customer info (subscriptions, entitlements, purchase history).
-  Future<CustomerInfo> getCustomerInfo() async {
-    if (!_initialized) {
-      throw StateError('RevenueCat not initialized. Call SubscriptionService.initialize() in main().');
-    }
-    return Purchases.getCustomerInfo();
-  }
-
-  /// Restore previous purchases. Call when user taps "Restore Purchase".
-  Future<CustomerInfo> restorePurchases() async {
-    if (!_initialized) {
-      throw StateError('RevenueCat not initialized.');
-    }
-    return Purchases.restorePurchases();
-  }
-
-  /// Get available offerings (monthly, yearly, lifetime).
-  Future<Offerings?> getOfferings() async {
-    if (!_initialized) return null;
+  /// Back to an anonymous RevenueCat user after sign-out.
+  Future<void> logOut() async {
+    if (!_initialized) return;
     try {
-      return await Purchases.getOfferings();
+      if (!await Purchases.isAnonymous) await Purchases.logOut();
     } catch (e) {
-      debugPrint('[RevenueCat] Get offerings error: $e');
-      return null;
+      debugPrint('[RevenueCat] logOut failed: $e');
     }
   }
 
-  /// Purchase a package. Use packages from [getOfferings] or create manually.
-  Future<CustomerInfo> purchasePackage(Package package) async {
-    if (!_initialized) {
-      throw StateError('RevenueCat not initialized.');
+  /// Buys the store product [productId] (a plan's `revenuecat_product_id`).
+  /// Returns false when the user cancelled. Throws [PurchaseUnavailable]
+  /// when the product can't be found or purchases are off.
+  Future<bool> purchaseProduct(String productId, {required bool subscription}) async {
+    if (!_initialized) throw const PurchaseUnavailable('In-app purchases aren’t available in this build.');
+    final products = await Purchases.getProducts(
+      [productId],
+      productCategory: subscription ? ProductCategory.subscription : ProductCategory.nonSubscription,
+    );
+    if (products.isEmpty) throw const PurchaseUnavailable('This plan isn’t available in the App Store right now.');
+    try {
+      await Purchases.purchase(PurchaseParams.storeProduct(products.first));
+      return true;
+    } on PlatformException catch (e) {
+      if (PurchasesErrorHelper.getErrorCode(e) == PurchasesErrorCode.purchaseCancelledError) return false;
+      rethrow;
     }
-    // ignore: deprecated_member_use
-    final result = await Purchases.purchasePackage(package);
-    return result.customerInfo;
   }
+
+  /// Restores earlier App Store purchases to the signed-in account.
+  Future<void> restorePurchases() async {
+    if (!_initialized) throw const PurchaseUnavailable('In-app purchases aren’t available in this build.');
+    await Purchases.restorePurchases();
+  }
+}
+
+class PurchaseUnavailable implements Exception {
+  const PurchaseUnavailable(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
 }

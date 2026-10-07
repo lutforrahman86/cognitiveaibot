@@ -1,12 +1,27 @@
+import '../../domain/entities/completion_event.dart';
+import '../models/ai_model_model.dart';
 import '../models/chat_message_model.dart';
+import '../models/conversation_model.dart';
 
-/// Abstract remote data source for chat
-/// Will be implemented with actual LLM API calls (OpenAI, Claude, etc.)
+/// The backend's chat API. Methods throw the exceptions in
+/// `core/error/exceptions.dart`; [streamCompletion] emits them as stream errors.
 abstract interface class ChatRemoteDataSource {
+  Future<List<AiModelModel>> getModels();
+  Future<List<ConversationModel>> getConversations({String? search});
   Future<List<ChatMessageModel>> getMessages(String conversationId);
-  Future<ChatMessageModel> sendMessage({
+  Future<ConversationModel> createConversation({String? modelId});
+  Future<ConversationModel> updateConversation(String conversationId, {required String title});
+  Future<void> deleteConversation(String conversationId);
+
+  /// `POST /api/chats/:id/completions`, parsed into events. Completing
+  /// [abortTrigger] closes the connection, which stops the reply. With
+  /// [regenerate] (and no [content]) the server answers the chat's last user
+  /// message again, replacing the replies after it.
+  Stream<CompletionEvent> streamCompletion({
     required String conversationId,
-    required String content,
-    String? modelId,
+    String? content,
+    required String modelId,
+    bool regenerate = false,
+    Future<void>? abortTrigger,
   });
 }

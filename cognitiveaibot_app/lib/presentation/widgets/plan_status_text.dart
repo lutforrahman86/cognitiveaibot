@@ -1,52 +1,48 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../providers/subscription_provider.dart';
+import '../providers/account_providers.dart';
 
-/// Shown where the account's name goes. The app has no sign-in yet (roadmap
-/// Phase 4), so there is no name to show.
-const String notSignedInLabel = 'Not signed in';
-
-/// Which piece of plan text to show.
-enum PlanText { title, detail, badge, memberLabel, actionLabel }
-
-/// Plan text based on the real RevenueCat entitlement check, so the app never
-/// claims a plan or billing date the user doesn't have.
+/// The account's plan name from the server (`GET /api/billing`), or
+/// "Free plan" when it has no subscription.
 class PlanStatusText extends ConsumerWidget {
-  const PlanStatusText(
-    this.kind, {
-    super.key,
-    this.style,
-    this.textAlign,
-    this.maxLines,
-    this.overflow,
-  });
+  const PlanStatusText({super.key, this.style});
 
-  final PlanText kind;
   final TextStyle? style;
-  final TextAlign? textAlign;
-  final int? maxLines;
-  final TextOverflow? overflow;
-
-  static String labelFor(PlanText kind, {required bool isPro}) => switch (kind) {
-        PlanText.title => isPro ? 'CognitiveAI Bot Pro' : 'Free plan',
-        PlanText.detail => isPro
-            ? 'Manage billing in your app store account.'
-            : 'Upgrade for more models and higher limits.',
-        PlanText.badge => isPro ? 'PRO' : 'FREE',
-        PlanText.memberLabel => isPro ? 'Pro member' : 'Free plan',
-        PlanText.actionLabel => isPro ? 'Manage Subscription' : 'View plans',
-      };
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isPro = ref.watch(isProEntitledProvider).valueOrNull ?? false;
+    final billing = ref.watch(billingProvider).valueOrNull;
+    return Text(billing?.plan?.name ?? (billing == null ? '' : 'Free plan'), style: style, overflow: TextOverflow.ellipsis);
+  }
+}
+
+/// "123.45 credits" from the server's available balance.
+class CreditsText extends ConsumerWidget {
+  const CreditsText({super.key, this.style, this.suffix = ' credits'});
+
+  final TextStyle? style;
+  final String suffix;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final billing = ref.watch(billingProvider);
     return Text(
-      labelFor(kind, isPro: isPro),
+      billing.when(
+        data: (b) => '${formatCredits(b.credits.available)}$suffix',
+        loading: () => '…',
+        error: (_, _) => 'Balance unavailable',
+      ),
       style: style,
-      textAlign: textAlign,
-      maxLines: maxLines,
-      overflow: overflow,
+      overflow: TextOverflow.ellipsis,
     );
   }
+}
+
+String formatCredits(double credits) {
+  final abs = credits.abs();
+  final fixed = credits.toStringAsFixed(abs >= 100 ? 0 : (abs >= 1 || abs == 0 ? 2 : 4));
+  final parts = fixed.split('.');
+  final whole = parts[0].replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
+  return parts.length > 1 ? '$whole.${parts[1]}' : whole;
 }
